@@ -1,84 +1,152 @@
-class Memory:
-	def __init__(self):
-		self.data = {}
+"""
+main.py
+A CPU simulator main module
+This program is an assignment for Computer Architecture 1 @ University of Pittsburgh
 
-	def read(self, address):
-		return self.data.get(address, None)
+The goal is to create a program that simulate's Tomasulo's algorithm with branch prediction and CDR.
 
-	def write(self, address, value):
-		self.data[address] = value
+Author: Harsh Selokar
+"""
 
-	def __str__(self):
-		return f"Memory(data={self.data})"
-#####################################################################
-# main.py
-# A CPU simulator main module
-# This program is an assignment for Computer Architecture 1 @ University of Pittsburgh
-#
-# The goal is to create a program that simulate's Tomasulo's algorithm with branch prediction and CDR.
-#
-# Author: Harsh Selokar
-#####################################################################
+"""
+IMPORTS DEFINED HERE
+"""
+from collections import deque
 
-# Define class for Functional Unit
-class FU:
-	def __init__(self, name="", num_rs=0, cycles_ex=0, cycles_mem=0, instruction=None):
-		self.name = name                # Name of the functional unit
-		self.num_rs = num_rs            # Number of reservation stations
-		self.cycles_ex = cycles_ex      # Execution cycles
-		self.cycles_mem = cycles_mem    # Memory access cycles
-		self.instruction = instruction  # A single unit can only process one instruction at a time
 
-	def __str__(self):
-		return (f"FU(num_rs={self.num_rs}, cycles_ex={self.cycles_ex}, cycles_mem={self.cycles_mem}, "
-				f"instruction={self.instruction})")
-	
+"""
+CLASSES DEFINED HERE
+"""
 class Instruction:
+	# Define class for Instruction
 	def __init__(self, opcode=None, operands=None):
-		self.opcode = opcode
-		self.operands = operands if operands is not None else []
+		self.opcode = opcode										# Operation code of the instruction
+		# Operands typically go destination, source1, source2
+		self.operands = operands if operands is not None else []	# List of operands for the instruction
+		# Named fields for common instruction types
+		self.dest = None
+		self.src1 = None
+		self.src2 = None
+		self.offset = None
+		self.immediate = None
 
+		# Parse operands for specific opcodes
+		if opcode is not None and operands is not None:
+			op = opcode.lower()
+			# Load/Store: Ld Fa, offset(Ra) or Sd Fa, offset(Ra)
+			if op in ["ld", "sd"] and len(operands) == 2:
+				self.dest = operands[0]
+				# Parse offset(Ra)
+				import re
+				match = re.match(r"(-?\d+)\((\w+)\)", operands[1])
+				if match:
+					self.offset = int(match.group(1))
+					self.src1 = match.group(2)
+			# Integer/FP ALU: Add Rd, Rs, Rt or Add.d Fd, Fs, Ft
+			elif op in ["add", "sub", "addi", "beq", "bne"] and len(operands) >= 3:
+				self.dest = operands[0]
+				self.src1 = operands[1]
+				self.src2 = operands[2]
+				if op == "addi" and len(operands) == 3:
+					self.immediate = operands[2]
+			elif op in ["add.d", "sub.d", "mult.d"] and len(operands) == 3:
+				self.dest = operands[0]
+				self.src1 = operands[1]
+				self.src2 = operands[2]
+			# NOP
+			elif op == "nop":
+				pass
+
+	# String representation of the Instruction
 	def __str__(self):
-		return f"Instruction(opcode={self.opcode}, operands={self.operands})"
+		return (f"Instruction(opcode={self.opcode}, operands={self.operands}, "
+				f"dest={self.dest}, src1={self.src1}, src2={self.src2}, "
+				f"offset={self.offset}, immediate={self.immediate})")
 
-class Memory:
-	def __init__(self):
-		self.data = {}
+	# Destructor for Instruction class
+	def __del__(self):
+		# Add any cleanup code here if needed
+		pass
 
-	def read(self, address):
-		return self.data.get(address, None)
+"""
+Helper functions for ISSUE
+"""
+# Fetch instructions from a file
+def fetch(filename):
+		"""
+		Reads instructions from a file and returns them as a list of (opcode, operands) tuples.
+		"""
+		instructions = []
+		with open(filename, 'r') as f:
+			for line in f:
+				line = line.strip()
+				if not line:
+					continue
+				parts = line.replace(',', '').split()
+				if len(parts) > 0:
+					opcode = parts[0]
+					operands = parts[1:]
+					instructions.append((opcode, operands))
+		return instructions
 
-	def write(self, address, value):
-		self.data[address] = value
 
-	def __str__(self):
-		return f"Memory(data={self.data})"
+def decode(instruction_list):
+	"""
+	Fetches instructions from instruction_list, decodes them into Instruction objects, and puts them into the global instruction_queue.
+	"""
+	global instruction_queue
+	instruction_queue = deque()
+	while instruction_list:
+		instr = instruction_list.pop(0)
+		# If already tuple (opcode, operands), just use it
+		if isinstance(instr, tuple):
+			opcode, operands = instr
+			instruction_queue.append(Instruction(opcode, operands))
+		elif isinstance(instr, str):
+			# Fallback: decode string
+			parts = instr.replace(',', '').split()
+			if len(parts) > 0:
+				opcode = parts[0]
+				operands = parts[1:]
+				instruction_queue.append(Instruction(opcode, operands))
+
+# starting code to setup the environment
+def init():
+	"""
+	Initializes global instructions from instructions.txt
+	"""
+
+"""
+ISSUE --------------------------------------------------------------
+"""
+def issue():
+	instructions_list = fetch('instructions.txt')
+	decode(instructions_list)
+
+"""
+ISSUE --------------------------------------------------------------
+"""
+
+def ex():
+	pass
+
+def mem():
+	pass
+
+def wb():
+	pass
+
+def commit():
+	pass
 
 def main():
-	init()
-	# Demonstrate Memory usage
-	mem = Memory()
-	mem.write(100, 42)
-	mem.write(200, 99)
-	print(f"Value at address 100: {mem.read(100)}")
-	print(f"Value at address 200: {mem.read(200)}")
-	print(f"Value at address 300 (unset): {mem.read(300)}")
-	print(f"Full memory contents: {mem}")
+	print("CPU Simulator Main Module")
 
-	# Simulate a clock cycle loop
-	clock_cycle = 0
-	# Loop until user decides to quit
-	while True:
-		user_input = input("Press Enter to continue looping, or 'q' to quit: ")
-		if user_input.lower() == 'q':
-			print("Exiting loop.")
-			break
-		print(f"Clock cycle: {clock_cycle}")
-		clock_cycle += 1
-
-def init():
-	print("Initialization complete.")
-
+	issue()
+	print("Instructions in queue:")
+	for instr in instruction_queue:
+		print(instr)
 
 if __name__ == "__main__":
 	main()
+
