@@ -55,8 +55,45 @@ class Architecture:
 
     def __init__(self,filename = None):
         self.filename = filename
+        
+        #parse through config.txt and update
+        #default values for testing, will update through parsing later
+        self.int_adder_FU = 1
+        self.FP_adder_FU = 1
+        self.multiplier_FU = 1
+        self.load_store_FU = 1
+
+        self.int_adder_num = 2
+        self.FP_adder_num = 3
+        self.multiplier_num = 2
+        self.load_store_num = 3
+
+        #Initialize instruction register
         self.instruction_queue = deque()
         self.init_instr()
+
+        #initialize RAT and ARF
+        #include ways to update ARF based on parameters
+        #registers 0-31 and R and 32-64 are F
+        self.ARF = [64]
+        self.init_ARF()
+        self.RAT = [64]
+        self.RAT = self.ARF.copy()
+        
+
+        #initial same number of rows as instructions in queue for now
+        self.ROB = [[None for _ in range (4)] for _ in range(len(self.instruction_queue))]
+
+        #assume individual RS
+		#[OP][Dst-Tag][Tag1][Tag1][Val1][Val2]
+        #[[None for _ in range (cols)] for _ in range(rows)]
+        self.init_config()
+        self.int_adder_RS = [[None for _ in range (6)] for _ in range(self.int_adder_num)]
+        self.FP_adder_RS = [[None for _ in range (6)] for _ in range(self.FP_adder_num)]
+        self.multiplier_RS = [[None for _ in range (6)] for _ in range(self.multiplier_num)]
+        self.load_store_RS = [[None for _ in range (6)] for _ in range(self.load_store_num)]
+
+
     
     """
 Helper functions for ISSUE
@@ -105,26 +142,60 @@ Helper functions for ISSUE
     def init_instr(self):
         instructions_list = self.parse()
         self.gen_instructions(instructions_list)
+    
+    def init_config(self):
+          #parse config.txt
+          pass
+    def issue(self):
+        #add instructions into the RS if not full
+        #think about how we are going to stall
+        #ask prof if we need to have official states like fetch and decode since our instruction class already handles fetch+decode
+        current_instruction = self.fetch()
+        check = current_instruction.opcode
+        issued = False
+        if check == "Add.d":
+            #check FP add RS
+            for i in self.FP_adder_RS:
+                  if i == None:
+                        #[OP][Dst-Tag][Tag1][Tag1][Val1][Val2]
+                        #self.ROB[]
 
-    def issue():
-        pass
-    def fetch():
-        pass
-    def decode():
-        pass
-    def execute():
-        pass
-    def write_back():
-        pass
+                        self.FP_adder_FU[i]
+                        issued = True
+                        #write to reservation station
+            if issued == False:
+                  #add stall state?
+                  pass
+                  
+                        
+        #add logic for other instructions                
+    
 
+    def fetch(self):
+        current_instruction = self.instruction_queue.popleft()
+        return current_instruction
+    def decode(self):
+        pass
+        
+    def execute(self):
+        pass
+    def write_back(self):
+        pass
+    
+    def init_ARF():
+        pass
 
 def main():
-	print("CPU Simulator Main Module")
+    print("CPU Simulator Main Module")
 
-	loot = Architecture("instructions.txt")
-	print("Instructions in queue:")
-	for instr in loot.instruction_queue:
-		print(instr)
+    loot = Architecture("instructions.txt")
+    loot.issue()
+
+    #print("Instructions in queue:")
+    #for instr in loot.instruction_queue:
+        #print(instr)
+
+
 
 if __name__ == "__main__":
 	main()
