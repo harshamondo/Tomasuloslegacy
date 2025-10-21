@@ -50,7 +50,35 @@ class Instruction:
 	def __del__(self):
 		# Add any cleanup code here if needed
 		pass
-      
+
+class ROB_entry:
+      def __init__(self,src_reg = None):
+            self.src_reg = ""
+            self.value = 0
+            self.done = False
+
+class RS_Unit:
+      def __init__(self,status = None, DST_tag = None, type = None, opcode = None, tag1 = None, tag2 = None, value1 = None, value2 = None):
+            self.status = False
+            self.DST_tag = ""
+            self.type = ""
+            self.opcode = ""
+            self.tag1 = ""
+            self.tag2 = ""
+            self.value1 = 0
+            self.value2 = 0
+
+class RAT:
+      def __init__(self,current_alias = None):
+            self.ARF_reg = ""
+            self.current_alias = ""
+
+class ARF:
+      def __init__(self,type = None):
+            self.type = ""
+            self.reg = ""
+            self.value = ""
+            
 class Architecture:
 
     def __init__(self,filename = None):
@@ -78,20 +106,25 @@ class Architecture:
         self.ARF = [64]
         self.init_ARF()
         self.RAT = [64]
-        self.RAT = self.ARF.copy()
+        self.init_RAT()
+        
+        
         
 
         #initial same number of rows as instructions in queue for now
-        self.ROB = [[None for _ in range (4)] for _ in range(len(self.instruction_queue))]
+        #ROB should be a queue
+        self.ROB = deque()
 
         #assume individual RS
 		#[OP][Dst-Tag][Tag1][Tag1][Val1][Val2]
-        #[[None for _ in range (cols)] for _ in range(rows)]
+        #RS_tables will contain an array of RS_unit objects
+        #self.RS_tables = []
+        self.int_adder_RS = []
+        self.FP_adder_RS = []
+        self.multiplier_RS = []
+        self.load_store_RS = []
         self.init_config()
-        self.int_adder_RS = [[None for _ in range (6)] for _ in range(self.int_adder_num)]
-        self.FP_adder_RS = [[None for _ in range (6)] for _ in range(self.FP_adder_num)]
-        self.multiplier_RS = [[None for _ in range (6)] for _ in range(self.multiplier_num)]
-        self.load_store_RS = [[None for _ in range (6)] for _ in range(self.load_store_num)]
+
 
 
     
@@ -145,7 +178,30 @@ Helper functions for ISSUE
     
     def init_config(self):
           #parse config.txt
-          pass
+          #include code to parse config.txt and update # of RS for each unit accordingly, for now it is hardcoded to initialize the RS tables
+          for i in range(1,self.FP_adder_num):
+                self.FP_adder_RS.append(RS_Unit())
+          for i in range(1,self.int_adder_num):
+                self.int_adder_RS.append(RS_Unit())
+          for i in range(1,self.multiplier_num):
+                self.multiplier_RS.append(RS_Unit())
+          for i in range(1,self.load_store_num):
+                self.load_store_RS.append(RS_Unit())
+
+          #debug
+          #print(len(self.FP_adder_RS))
+    def init_ARF(self):
+        #can add logic here to insert default values into the ARF
+        for i in range (0,31):
+              self.ARF.append(ARF("R"))
+        for i in range (32,64):
+              self.ARF.append(ARF("F"))
+
+    def init_RAT(self):
+        #this function will initialize an array of RAT class objects and assign them to the value of ARF
+        for i in range(len(self.ARF)):
+              self.RAT.append(RAT("ARF1"))
+
     def issue(self):
         #add instructions into the RS if not full
         #think about how we are going to stall
@@ -156,13 +212,14 @@ Helper functions for ISSUE
         if check == "Add.d":
             #check FP add RS
             for i in self.FP_adder_RS:
-                  if i == None:
-                        #[OP][Dst-Tag][Tag1][Tag1][Val1][Val2]
-                        #self.ROB[]
-
+                  if i == None and i.status == False:
+                        #add to ROB table
+                        #update RAT
+                        self.ROB.append(ROB_entry())
+                        
                         self.FP_adder_FU[i]
                         issued = True
-                        #write to reservation station
+                        
             if issued == False:
                   #add stall state?
                   pass
@@ -182,14 +239,13 @@ Helper functions for ISSUE
     def write_back(self):
         pass
     
-    def init_ARF():
-        pass
+
 
 def main():
     print("CPU Simulator Main Module")
 
     loot = Architecture("instructions.txt")
-    loot.issue()
+    
 
     #print("Instructions in queue:")
     #for instr in loot.instruction_queue:
