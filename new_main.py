@@ -67,11 +67,28 @@ class RS_Unit:
             self.tag2 = ""
             self.value1 = 0
             self.value2 = 0
+      def del_entry(self):
+            
+            self.__init__()
+
+      def add_entry(self,status = None, DST_tag = None, opcode = None, reg1 = None, reg2 = None):
+            #this function will recieve src operands and check if the registers point to ARF or a ROB entry and update accordingly
+            self.status = status
+            self.DST_tag = DST_tag
+            self.opcode = opcode
+
+            
+
+
+            
+            
 
 class RAT:
       def __init__(self,current_alias = None):
+            #ARF_reg = R1, R2 ...etc
             self.ARF_reg = ""
-            self.current_alias = ""
+            #current_alias is a integer representing ROB reg number starting from 1
+            self.current_alias = None
 
 class ARF:
       def __init__(self,type = None):
@@ -95,6 +112,8 @@ class Architecture:
         self.FP_adder_num = 3
         self.multiplier_num = 2
         self.load_store_num = 3
+
+        self.clock = 0
 
         #Initialize instruction register
         self.instruction_queue = deque()
@@ -194,13 +213,13 @@ Helper functions for ISSUE
         #can add logic here to insert default values into the ARF
         for i in range (0,31):
               self.ARF.append(ARF("R"))
-        for i in range (32,64):
+        for i in range (32,63):
               self.ARF.append(ARF("F"))
 
     def init_RAT(self):
         #this function will initialize an array of RAT class objects and assign them to the value of ARF
         for i in range(len(self.ARF)):
-              self.RAT.append(RAT("ARF1"))
+              self.RAT.append(RAT("ARF" + str(i + 1)))
 
     def issue(self):
         #add instructions into the RS if not full
@@ -215,9 +234,12 @@ Helper functions for ISSUE
                   if i == None and i.status == False:
                         #add to ROB table
                         #update RAT
-                        self.ROB.append(ROB_entry())
+                        self.ROB.append(ROB_entry(current_instruction.dest))
+                        self.RAT[current_instruction.dest[-1]].current_alias = "ROB" + str(len(self.ROB)+1)
                         
-                        self.FP_adder_FU[i]
+                        #add to reservation stations
+                        #[status][DST_tag][opcode][tag1][tag2][value1][value2]
+                        self.FP_adder_RS[i].add_entry(True,self.RAT[current_instruction.dest[-1]].current_alias,check,current_instruction.src1, current_instruction.src2)
                         issued = True
                         
             if issued == False:
@@ -239,7 +261,16 @@ Helper functions for ISSUE
     def write_back(self):
         pass
     
+    def FP_adder(self,reg1,reg2):
+        pass
 
+    def INT_adder(self,reg1,reg2):
+        pass
+    def multiplier(self,reg1,reg2):
+        pass
+    def CBD(self):
+        pass
+    
 
 def main():
     print("CPU Simulator Main Module")
