@@ -152,10 +152,7 @@ class ARF:
         return self.data.get(address, None)
 
     def write(self, address,alias):
-       
         self.data[address] = alias
-
-       
 
     def __str__(self):
         return f"ARF(Rdata={self.R_type})", f"ARF(Rdata={self.F_type})"
@@ -184,8 +181,8 @@ class Architecture:
         with open(self.config, newline='') as f:
             reader = csv.DictReader(f)
 
-            #header = next(reader)  # Skip header row
-            #print(f"Header : {header}")  # For debugging purposes
+            # header = next(reader)  # Skip header row
+            # print(f"Header : {header}")  # For debugging purposes
 
             # operations to read configuration
             for row in reader:
@@ -213,9 +210,6 @@ class Architecture:
         self.ARF = ARF()
         self.RAT = RAT()
         self.init_ARF_RAT()
-        
-        
-        
 
         #initial same number of rows as instructions in queue for now
         #ROB should be a queue
