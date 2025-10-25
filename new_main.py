@@ -1,4 +1,11 @@
+# new_main.py
+# Final version of CPU simulator main module
+# This program is an assignment for Computer Architecture 1 @ University of Pittsburgh
+# Authors: Harsh Selokar, Victor Chiang, Roshin Maharana
+
 from collections import deque
+import re
+import csv
 
 class Instruction:
 	# Define class for Instruction
@@ -20,7 +27,6 @@ class Instruction:
 			if op in ["ld", "sd"] and len(operands) == 2:
 				self.dest = operands[0]
 				# Parse offset(Ra)
-				import re
 				match = re.match(r"(-?\d+)\((\w+)\)", operands[1])
 				if match:
 					self.offset = int(match.group(1))
@@ -64,19 +70,22 @@ class ROB:
     def __str__(self):
         return f"ROB_entry(data={self.data})"
 
+# Reservation Station Unit - used to represent each entry in a reservation station
+# [status][DST_tag][opcode][tag1][tag2][value1][value2]
+# will slowly count clock cycles to simulate execution time
+# status means the value is ready for execute
 class RS_Unit:
-      def __init__(self,status = None, DST_tag = None, type = None, opcode = None, tag1 = None, tag2 = None, value1 = None, value2 = None):
+      def __init__(self, status = None, DST_tag = None, type = None, opcode = None, tag1 = None, tag2 = None, value1 = None, value2 = None):
             self.status = False
             self.DST_tag = ""
             self.type = ""
             self.opcode = ""
             self.tag1 = ""
             self.tag2 = ""
-            self.value1 = 0
-            self.value2 = 0
+            self.value1 = None
+            self.value2 = None
 
       def del_entry(self):
-            
             self.__init__()
 
       def add_entry(self,status = None, DST_tag = None, opcode = None, reg1 = None, reg2 = None):
@@ -98,6 +107,24 @@ class RS_Unit:
                   self.tag1 = self.RAT[int(reg2[1:])].current_alias
             
     
+
+# Reservation Station Table - holds multiple RS_Unit objects
+# Type indicates the type of functional unit it is associated with (e.g., Integer Adder, FP Adder, Multiplier, Load/Store)
+# number of units indicates how many RS_Unit entries it can hold at maximum
+class RS_Table:
+    def __init__(self, type = None, num_units = 0):
+        self.table = []
+        self.type = type
+        self.num_units = num_units
+    
+    def add_unit(self, rs_unit):
+        self.table.append(rs_unit)
+
+    def RS_Table_Print(self):
+        print(f"Reservation Station Table Type: {self.type}")
+        print(f"Number of Units: {self.num_units}")
+        for unit in self.table:
+            print(unit.__dict__)
 
 class RAT:
 
@@ -134,9 +161,9 @@ class ARF:
         return f"ARF(Rdata={self.R_type})", f"ARF(Rdata={self.F_type})"
             
 class Architecture:
-
     def __init__(self,filename = None):
         self.filename = filename
+        self.config = "config.csv"
         
         #parse through config.txt and update
         #default values for testing, will update through parsing later
@@ -145,12 +172,36 @@ class Architecture:
         self.multiplier_FU = 1
         self.load_store_FU = 1
 
-        self.int_adder_num = 2
-        self.FP_adder_num = 3
-        self.multiplier_num = 2
-        self.load_store_num = 3
+        self.int_adder_rs_num = 2
+        self.FP_adder_rs_num = 3
+        self.multiplier_rs_num = 2
+        self.load_store_rs_num = 3
 
         self.clock = 0
+
+        #parsing code to set the number of functional units and reservation stations will go here
+        
+        with open(self.config, newline='') as f:
+            reader = csv.DictReader(f)
+
+            #header = next(reader)  # Skip header row
+            #print(f"Header : {header}")  # For debugging purposes
+
+            # operations to read configuration
+            for row in reader:
+                type_name = row.get("Type", "").strip().lower()
+                rs_field = row.get("# of rs")
+                ex_field = row.get("Cycles in EX")
+                mem_field = row.get("Cycles in Mem")
+                fu_field = row.get("# of FUs")
+
+                if type_name == "FP adder":
+                    self.int_adder_rs_num = int(rs_field) if rs_field.isdigit() else self.int_adder_rs_num
+                    self.int_adder_FU = int(fu_field) if fu_field.isdigit() else self.int_adder_FU             
+
+        self.fs_fp_add = RS_Table(type="fs_fp_add", num_units=self.FP_adder_rs_num)
+        print("FP Adder RS Table Initialized with entries:")
+        self.fs_fp_add.RS_Table_Print()
 
         #Initialize instruction register
         self.instruction_queue = deque()
@@ -181,12 +232,10 @@ class Architecture:
         self.init_config()
 
 
-
-    
     """
 Helper functions for ISSUE
 """
-# Fetch instructions from a file
+    # Fetch instructions from a file
     def parse(self):
             """
             Reads instructions from a file and returns them as a list of (opcode, operands) tuples.
@@ -234,13 +283,13 @@ Helper functions for ISSUE
     def init_config(self):
           #parse config.txt
           #include code to parse config.txt and update # of RS for each unit accordingly, for now it is hardcoded to initialize the RS tables
-          for i in range(1,self.FP_adder_num):
+          for i in range(1,self.FP_adder_rs_num):
                 self.FP_adder_RS.append(RS_Unit())
-          for i in range(1,self.int_adder_num):
+          for i in range(1,self.int_adder_rs_num):
                 self.int_adder_RS.append(RS_Unit())
-          for i in range(1,self.multiplier_num):
+          for i in range(1,self.multiplier_rs_num):
                 self.multiplier_RS.append(RS_Unit())
-          for i in range(1,self.load_store_num):
+          for i in range(1,self.load_store_rs_num):
                 self.load_store_RS.append(RS_Unit())
 
           #debug
@@ -288,7 +337,19 @@ Helper functions for ISSUE
     def decode(self):
         pass
         
+    # EXECUTE --------------------------------------------------------------
+    # Checks the reservation stations for ready instructions, if they are ready, executes them
+    # Will simulate cycles needed for each functional unit
     def execute(self):
+        for i in self.FP_adder_RS:
+            if i.status == True:
+                #check if operands are ready
+                if i.tag1 == None and i.tag2 == None:
+                    #execute instruction
+                    result = self.INT_adder(i.value1, i.value2)  
+                    #clear RS entry
+                    i.del_entry()
+
         pass
     def write_back(self):
         pass
@@ -298,8 +359,10 @@ Helper functions for ISSUE
 
     def INT_adder(self,reg1,reg2):
         pass
+
     def multiplier(self,reg1,reg2):
         pass
+    
     def CBD(self):
         pass
 
@@ -318,17 +381,16 @@ def main():
     print("CPU Simulator Main Module")
 
     loot = Architecture("instructions.txt")
-
+    
     #Test ARF,ROB,RAT, and RS are intialized properly
     print("Now printing RAT Contents")
     for i in range(0,len(loot.RAT)):
           curr = loot.RAT[i]
           print(curr.ARF_reg,loot.RAT.current_alias)
-    
 
-    #print("Instructions in queue:")
-    #for instr in loot.instruction_queue:
-        #print(instr)
+    # # print("Instructions in queue:")
+    # # for instr in loot.instruction_queue:
+    # #     print(instr)
 
 
 
