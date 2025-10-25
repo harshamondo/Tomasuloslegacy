@@ -51,11 +51,18 @@ class Instruction:
 		# Add any cleanup code here if needed
 		pass
 
-class ROB_entry:
-      def __init__(self,src_reg = None):
-            self.src_reg = ""
-            self.value = 0
-            self.done = False
+class ROB:
+    def __init__(self):
+        self.data = {}
+      
+    def read(self, address):
+        return self.data.get(address, None)
+    
+    def write(self, address, value,alias,done):
+        self.data[address] = alias,value,done
+
+    def __str__(self):
+        return f"ROB_entry(data={self.data})"
 
 class RS_Unit:
       def __init__(self,status = None, DST_tag = None, type = None, opcode = None, tag1 = None, tag2 = None, value1 = None, value2 = None):
@@ -93,19 +100,38 @@ class RS_Unit:
     
 
 class RAT:
-      def __init__(self,current_alias = None):
-            #ARF_reg = R1, R2 ...etc
-            self.ARF_reg = ""
-            #current_alias is a integer representing ROB reg number starting from 1
-            self.current_alias = None
 
+    #addressing ROB1..ROB2..etc
+    #value is another register or alias
+    def __init__(self):
+        self.data = {}
+      
+    def read(self, address):
+        return self.data.get(address, None)
 
+    def write(self, address,alias):
+       
+        self.data[address] = alias
+
+    def __str__(self):
+        return f"RAT(Rdata={self.R_type})", f"RAT(Rdata={self.F_type})"
+    
 
 class ARF:
-      def __init__(self,type = None):
-            self.type = ""
-            self.reg = ""
-            self.value = ""
+    def __init__(self):
+        self.data = {}
+      
+    def read(self, address):
+        return self.data.get(address, None)
+
+    def write(self, address,alias):
+       
+        self.data[address] = alias
+
+       
+
+    def __str__(self):
+        return f"ARF(Rdata={self.R_type})", f"ARF(Rdata={self.F_type})"
             
 class Architecture:
 
@@ -133,17 +159,16 @@ class Architecture:
         #initialize RAT and ARF
         #include ways to update ARF based on parameters
         #registers 0-31 and R and 32-64 are F
-        self.ARF = [64]
-        self.init_ARF()
-        self.RAT = [64]
-        self.init_RAT()
+        self.ARF = ARF()
+        self.RAT = RAT()
+        self.init_ARF_RAT()
         
         
         
 
         #initial same number of rows as instructions in queue for now
         #ROB should be a queue
-        self.ROB = deque()
+        self.ROB = ROB()
 
         #assume individual RS
 		#[OP][Dst-Tag][Tag1][Tag1][Val1][Val2]
@@ -220,17 +245,13 @@ Helper functions for ISSUE
 
           #debug
           #print(len(self.FP_adder_RS))
-    def init_ARF(self):
-        #can add logic here to insert default values into the ARF
-        for i in range (0,31):
-              self.ARF.append(ARF("R"))
-        for i in range (32,63):
-              self.ARF.append(ARF("F"))
+    def init_ARF_RAT(self):
+        #add logic here to initialize ARF to values
+        for i in range(1,65):
+             self.ARF.write("R" + str(i),0)
+             self.RAT.write("R" + str(i),"ARF" + str(i))
 
-    def init_RAT(self):
-        #this function will initialize an array of RAT class objects and assign them to the value of ARF
-        for i in range(len(self.ARF)):
-              self.RAT.append(RAT("ARF" + str(i + 1)))
+        
 
     def issue(self):
         #add instructions into the RS if not full
@@ -282,9 +303,15 @@ Helper functions for ISSUE
     def CBD(self):
         pass
 
-def debug_init():
-      print("Checking ARF, RAT, and ROB")
+def check_init():
+    loot = Architecture("instructions.txt")
+    for i in range(1,32):
+        print(loot.ARF.read("R"+ str(i)))
+        print(loot.RAT.read("R"+ str(i)))
 
+    for i in range(33,65):
+        print(loot.ARF.read("R"+ str(i)))
+        print(loot.RAT.read("R"+ str(i)))
 
 
 def main():
@@ -306,4 +333,4 @@ def main():
 
 
 if __name__ == "__main__":
-	main()
+	check_init()
