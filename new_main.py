@@ -67,6 +67,7 @@ class RS_Unit:
             self.tag2 = ""
             self.value1 = 0
             self.value2 = 0
+
       def del_entry(self):
             
             self.__init__()
@@ -78,10 +79,18 @@ class RS_Unit:
             self.opcode = opcode
 
             
+            #if the rat points to ARF then find the ARF value, if not write the ROB entry to the RS
+            if self.RAT[int(reg1[1:])].current_alias[:3] == "ARF":
+                  self.value1 = self.ARF[self.RAT[int(reg1[1:])]].value
+            else:
+                  self.tag1 = self.RAT[int(reg1[1:])].current_alias
 
-
+            if self.RAT[int(reg2[1:])].current_alias[:3] == "ARF":
+                  self.value1 = self.ARF[self.RAT[int(reg2[1:])]].value
+            else:
+                  self.tag1 = self.RAT[int(reg2[1:])].current_alias
             
-            
+    
 
 class RAT:
       def __init__(self,current_alias = None):
@@ -89,6 +98,8 @@ class RAT:
             self.ARF_reg = ""
             #current_alias is a integer representing ROB reg number starting from 1
             self.current_alias = None
+
+
 
 class ARF:
       def __init__(self,type = None):
@@ -270,12 +281,22 @@ Helper functions for ISSUE
         pass
     def CBD(self):
         pass
-    
+
+def debug_init():
+      print("Checking ARF, RAT, and ROB")
+
+
 
 def main():
     print("CPU Simulator Main Module")
 
     loot = Architecture("instructions.txt")
+
+    #Test ARF,ROB,RAT, and RS are intialized properly
+    print("Now printing RAT Contents")
+    for i in range(0,len(loot.RAT)):
+          curr = loot.RAT[i]
+          print(curr.ARF_reg,loot.RAT.current_alias)
     
 
     #print("Instructions in queue:")
