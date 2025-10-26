@@ -2,11 +2,11 @@ from collections import deque
 import re
 import csv
 
-from instruction import Instruction
-from rob import ROB
-from rs import RS_Unit, RS_Table
-from arf import ARF
-from rat import RAT
+from modules.instruction import Instruction
+from modules.rob import ROB
+from modules.rs import RS_Unit, RS_Table
+from modules.arf import ARF
+from modules.rat import RAT
 
 class Architecture:
     def __init__(self,filename = None):

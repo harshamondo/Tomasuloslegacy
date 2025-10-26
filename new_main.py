@@ -7,7 +7,7 @@
 from architecture import Architecture
 
 def check_init():
-    loot = Architecture("instructions.txt")
+    loot = Architecture("instruction_sets/instructions.txt")
     # for i in range(1,32):
     #     print(loot.ARF.read("R"+ str(i)))
     #     print(loot.RAT.read("R"+ str(i)))
@@ -20,7 +20,7 @@ def check_init():
 def main():
     print("CPU Simulator Main Module")
 
-    loot = Architecture("instructions.txt")
+    loot = Architecture("instruction_sets/instructions.txt")
     
     # Test ARF,ROB,RAT, and RS are intialized properly
     print("Now printing RAT Contents")
