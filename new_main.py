@@ -44,7 +44,6 @@ class RS_Unit:
             self.status = status
             self.DST_tag = DST_tag
             self.opcode = opcode
-
             
             #if the rat points to ARF then find the ARF value, if not write the ROB entry to the RS
             if self.RAT[int(reg1[1:])].current_alias[:3] == "ARF":
@@ -63,17 +62,21 @@ class RS_Unit:
 # Type indicates the type of functional unit it is associated with (e.g., Integer Adder, FP Adder, Multiplier, Load/Store)
 # number of units indicates how many RS_Unit entries it can hold at maximum
 class RS_Table:
-    def __init__(self, type = None, num_units = 0):
+    def __init__(self, type = None, num_rs_units = 0, num_FU_units = 0):
         self.table = []
         self.type = type
-        self.num_units = num_units
+        self.num_units = num_rs_units
+        self.num_FU_units = num_FU_units
+        self.busy_FU_units = 0
     
     def add_unit(self, rs_unit):
         self.table.append(rs_unit)
 
-    def RS_Table_Print(self):
+    def __str__(self):
         print(f"Reservation Station Table Type: {self.type}")
         print(f"Number of Units: {self.num_units}")
+        print(f"Number of Functional Units: {self.num_FU_units}")
+        print(f"Busy Functional Units: {self.busy_FU_units}")
         for unit in self.table:
             print(unit.__dict__)
 
@@ -81,7 +84,6 @@ class RS_Table:
         return len(self.table) >= self.num_units
 
 class RAT:
-
     #addressing ROB1..ROB2..etc
     #value is another register or alias
     def __init__(self):
@@ -146,13 +148,19 @@ class Architecture:
                 mem_field = row.get("Cycles in Mem")
                 fu_field = row.get("# of FUs")
 
-                if type_name == "FP adder":
-                    self.int_adder_rs_num = int(rs_field) if rs_field.isdigit() else self.int_adder_rs_num
-                    self.int_adder_FU = int(fu_field) if fu_field.isdigit() else self.int_adder_FU             
+                print("Type:", type_name)
+                print("# of RS:", rs_field)
+                print("Cycles in EX:", ex_field)
+                print("Cycles in Mem:", mem_field)
+                print("# of FUs:", fu_field)
 
-        self.fs_fp_add = RS_Table(type="fs_fp_add", num_units=self.FP_adder_rs_num)
-        print("FP Adder RS Table Initialized with entries:")
-        self.fs_fp_add.RS_Table_Print()
+                if re.search("FP adder", type_name, re.IGNORECASE):
+                    self.FP_adder_rs_num = int(rs_field) if rs_field.isdigit() else self.FP_adder_rs_num
+                    self.FP_adder_FU = int(fu_field) if fu_field.isdigit() else self.FP_adder_FU             
+
+        print(f"FP Adder RS Num: {self.FP_adder_rs_num}, FP Adder FU: {self.FP_adder_FU}")
+        self.fs_fp_add = RS_Table(type="fs_fp_add", num_rs_units=self.FP_adder_rs_num, num_FU_units=self.FP_adder_FU)
+        self.fs_fp_add.__str__()
 
         #Initialize instruction register
         self.instruction_queue = deque()
@@ -220,7 +228,6 @@ Helper functions for ISSUE
                     operands = parts[1:]
                     self.instruction_queue.append(Instruction(opcode, operands))
 
-
     """
     ISSUE --------------------------------------------------------------
     """
@@ -248,8 +255,6 @@ Helper functions for ISSUE
              self.ARF.write("R" + str(i),0)
              self.RAT.write("R" + str(i),"ARF" + str(i))
 
-        
-
     def issue(self):
         #add instructions into the RS if not full
         #think about how we are going to stall
@@ -274,7 +279,6 @@ Helper functions for ISSUE
             if issued == False:
                   #add stall state?
                   pass
-                  
                         
         #add logic for other instructions                
     
@@ -297,8 +301,7 @@ Helper functions for ISSUE
                     result = self.INT_adder(i.value1, i.value2)  
                     #clear RS entry
                     i.del_entry()
-
-        pass
+        
     def write_back(self):
         pass
     
@@ -316,21 +319,21 @@ Helper functions for ISSUE
 
 def check_init():
     loot = Architecture("instructions.txt")
-    for i in range(1,32):
-        print(loot.ARF.read("R"+ str(i)))
-        print(loot.RAT.read("R"+ str(i)))
+    # for i in range(1,32):
+    #     print(loot.ARF.read("R"+ str(i)))
+    #     print(loot.RAT.read("R"+ str(i)))
 
-    for i in range(33,65):
-        print(loot.ARF.read("R"+ str(i)))
-        print(loot.RAT.read("R"+ str(i)))
+    # for i in range(33,65):
+    #     print(loot.ARF.read("R"+ str(i)))
+    #     print(loot.RAT.read("R"+ str(i)))
 
-
+# Don't use this, use the correct __name__ guard below
 def main():
     print("CPU Simulator Main Module")
 
     loot = Architecture("instructions.txt")
     
-    #Test ARF,ROB,RAT, and RS are intialized properly
+    # Test ARF,ROB,RAT, and RS are intialized properly
     print("Now printing RAT Contents")
     for i in range(0,len(loot.RAT)):
           curr = loot.RAT[i]
