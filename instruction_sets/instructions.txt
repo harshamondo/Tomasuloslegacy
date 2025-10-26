@@ -1,2 +1,2 @@
 Add.d F1, F2, F3
-Ld F4, 8(R1)
+Add.d F3, F1, F4

@@ -71,15 +71,6 @@ class Architecture:
         #ROB should be a queue
         self.ROB = ROB()
 
-        #assume individual RS
-		#[OP][Dst-Tag][Tag1][Tag1][Val1][Val2]
-        #RS_tables will contain an array of RS_unit objects
-        #self.RS_tables = []
-        self.int_adder_RS = []
-        self.FP_adder_RS = []
-        self.multiplier_RS = []
-        self.load_store_RS = []
-        self.init_config()
 
 
     """
@@ -128,26 +119,19 @@ Helper functions for ISSUE
     def init_instr(self):
         instructions_list = self.parse()
         self.gen_instructions(instructions_list)
-    
-    def init_config(self):
-          #parse config.txt
-          #include code to parse config.txt and update # of RS for each unit accordingly, for now it is hardcoded to initialize the RS tables
-          for i in range(1,self.FP_adder_rs_num):
-                self.FP_adder_RS.append(RS_Unit())
-          for i in range(1,self.int_adder_rs_num):
-                self.int_adder_RS.append(RS_Unit())
-          for i in range(1,self.multiplier_rs_num):
-                self.multiplier_RS.append(RS_Unit())
-          for i in range(1,self.load_store_rs_num):
-                self.load_store_RS.append(RS_Unit())
+
 
           #debug
           #print(len(self.FP_adder_RS))
     def init_ARF_RAT(self):
         #add logic here to initialize ARF to values
-        for i in range(1,65):
+        #add logic here to initialize ARF to values
+        for i in range(1,33):
              self.ARF.write("R" + str(i),0)
              self.RAT.write("R" + str(i),"ARF" + str(i))
+        for i in range(1,33):
+             self.ARF.write("F" + str(i),0)
+             self.RAT.write("F" + str(i),"ARF" + str(i+32))
 
     def issue(self):
         #add instructions into the RS if not full
@@ -156,25 +140,21 @@ Helper functions for ISSUE
         current_instruction = self.fetch()
         check = current_instruction.opcode
         issued = False
+        current_ROB = None
         if check == "Add.d":
-            #check FP add RS
-            for i in self.FP_adder_RS:
-                  if i == None and i.status == False:
-                        #add to ROB table
-                        #update RAT
-                        self.ROB.append(ROB_entry(current_instruction.dest))
-                        self.RAT[current_instruction.dest[-1]].current_alias = "ROB" + str(len(self.ROB)+1)
-                        
-                        #add to reservation stations
-                        #[status][DST_tag][opcode][tag1][tag2][value1][value2]
-                        self.FP_adder_RS[i].add_entry(True,self.RAT[current_instruction.dest[-1]].current_alias,check,current_instruction.src1, current_instruction.src2)
-                        issued = True
-                        
-            if issued == False:
-                  #add stall state?
-                  pass
-                        
-        #add logic for other instructions                
+            
+            print(self.ROB.getEntries())
+            #add to ROB and RAT regardless if we must wait for RS space
+            current_ROB = "ROB" + str(self.ROB.getEntries()+1)
+            self.ROB.write(current_ROB,current_instruction.dest,None,None)
+            self.RAT.write(current_instruction.dest,current_ROB)
+
+            #check for space in RS
+            if len(self.fs_fp_add.table) < self.FP_adder_rs_num:
+                self.fs_fp_add.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF))
+            else:
+                #stall
+                pass              
     
 
     def fetch(self):
