@@ -8,13 +8,18 @@ from architecture import Architecture
 
 def check_init():
     loot = Architecture("instruction_sets/instructions.txt")
-    # for i in range(1,32):
-    #     print(loot.ARF.read("R"+ str(i)))
-    #     print(loot.RAT.read("R"+ str(i)))
+    for i in range(1,33):
+        print(loot.ARF.read("R"+ str(i)))
+        print(loot.RAT.read("R"+ str(i)))
 
-    # for i in range(33,65):
-    #     print(loot.ARF.read("R"+ str(i)))
-    #     print(loot.RAT.read("R"+ str(i)))
+    for i in range(1,33):
+        print(loot.ARF.read("F"+ str(i)))
+        print(loot.RAT.read("F"+ str(i)))
+
+    loot.issue()
+    loot.fs_fp_add.table[0].print_RS()
+    loot.issue()
+    loot.fs_fp_add.table[1].print_RS()
 
 # Don't use this, use the correct __name__ guard below
 def main():

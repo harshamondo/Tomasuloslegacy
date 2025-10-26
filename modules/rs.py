@@ -3,35 +3,36 @@
 # will slowly count clock cycles to simulate execution time
 # status means the value is ready for execute
 class RS_Unit:
-      def __init__(self, status = None, DST_tag = None, type = None, opcode = None, tag1 = None, tag2 = None, value1 = None, value2 = None):
-            self.status = False
-            self.DST_tag = ""
-            self.type = ""
-            self.opcode = ""
-            self.tag1 = ""
-            self.tag2 = ""
+      def __init__(self,DST_tag = None, opcode = None, reg1 = None, reg2 = None, RAT_object = None, ARF_object = None):
+            self.opcode = opcode
+            self.tag1 = None
+            self.tag2 = None
             self.value1 = None
             self.value2 = None
 
-      def del_entry(self):
-            self.__init__()
+            self.reg1 = reg1
+            self.reg2 = reg2
 
-      def add_entry(self,status = None, DST_tag = None, opcode = None, reg1 = None, reg2 = None):
-            #this function will recieve src operands and check if the registers point to ARF or a ROB entry and update accordingly
-            self.status = status
-            self.DST_tag = DST_tag
-            self.opcode = opcode
+            self.RAT = RAT_object
+            self.ARF = ARF_object
+
+            self.DST_tag = RAT_object.read(DST_tag)
+
+
+            if self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ROB":
+                self.tag1 = self.RAT.read(self.reg1)
+            elif self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ARF":
+                self.value1 = self.ARF.read(self.reg1)
+
             
-            #if the rat points to ARF then find the ARF value, if not write the ROB entry to the RS
-            if self.RAT[int(reg1[1:])].current_alias[:3] == "ARF":
-                  self.value1 = self.ARF[self.RAT[int(reg1[1:])]].value
-            else:
-                  self.tag1 = self.RAT[int(reg1[1:])].current_alias
-
-            if self.RAT[int(reg2[1:])].current_alias[:3] == "ARF":
-                  self.value1 = self.ARF[self.RAT[int(reg2[1:])]].value
-            else:
-                  self.tag1 = self.RAT[int(reg2[1:])].current_alias
+            if self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ROB":
+                self.tag2 = self.RAT.read(self.reg2)
+            elif self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ARF":
+                self.value2 = self.ARF.read(self.reg2)
+        
+      def print_RS(self):
+           print("Now printing RS entry:")
+           print("[",self.opcode,"]","[",self.DST_tag,"]","[",self.tag1,"]","[",self.tag2,"]","[",self.value1,"]","[",self.value2,"]")
             
     
 

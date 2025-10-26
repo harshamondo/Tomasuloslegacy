@@ -1,4 +1,5 @@
 class RAT:
+
     #addressing ROB1..ROB2..etc
     #value is another register or alias
     def __init__(self):
@@ -10,6 +11,10 @@ class RAT:
     def write(self, address,alias):
        
         self.data[address] = alias
+
+    def clear(self,address):
+        self.data.pop(address, None)
+        self.entries -= 1
 
     def __str__(self):
         return f"RAT(Rdata={self.R_type})", f"RAT(Rdata={self.F_type})"
