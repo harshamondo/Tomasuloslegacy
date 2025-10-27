@@ -16,10 +16,14 @@ def check_init():
         print(loot.ARF.read("F"+ str(i)))
         print(loot.RAT.read("F"+ str(i)))
 
-    loot.issue()
-    loot.fs_fp_add.table[0].print_RS()
-    loot.issue()
-    loot.fs_fp_add.table[1].print_RS()
+    for i in range(0,60):
+        print("Issuing cycle number:", loot.clock)
+        loot.issue()
+        loot.fs_fp_add.table[0].print_RS()
+        #loot.issue()
+        #loot.fs_fp_add.table[1].print_RS()
+        loot.execute()
+        loot.clock += 1
 
 # Don't use this, use the correct __name__ guard below
 def main():
