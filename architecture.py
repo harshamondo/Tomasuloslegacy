@@ -50,10 +50,12 @@ class Architecture:
 
                 if re.search("FP adder", type_name, re.IGNORECASE):
                     self.FP_adder_rs_num = int(rs_field) if rs_field.isdigit() else self.FP_adder_rs_num
+                    self.FP_adder_cycles = int(ex_field) if ex_field.isdigit() else self.FP_adder_cycles
+                    self.FP_adder_mem_cycles = int(mem_field) if mem_field.isdigit() else self.FP_adder_mem_cycles
                     self.FP_adder_FU = int(fu_field) if fu_field.isdigit() else self.FP_adder_FU             
 
         print(f"FP Adder RS Num: {self.FP_adder_rs_num}, FP Adder FU: {self.FP_adder_FU}")
-        self.fs_fp_add = RS_Table(type="fs_fp_add", num_rs_units=self.FP_adder_rs_num, num_FU_units=self.FP_adder_FU)
+        self.fs_fp_add = RS_Table(type="fs_fp_add", num_rs_units=self.FP_adder_rs_num, num_FU_units=self.FP_adder_FU, cycles_per_instruction=self.FP_adder_cycles)
         self.fs_fp_add.__str__()
 
         #Initialize instruction register
@@ -70,7 +72,6 @@ class Architecture:
         #initial same number of rows as instructions in queue for now
         #ROB should be a queue
         self.ROB = ROB()
-
 
 
     """
@@ -138,11 +139,14 @@ Helper functions for ISSUE
         #think about how we are going to stall
         #ask prof if we need to have official states like fetch and decode since our instruction class already handles fetch+decode
         current_instruction = self.fetch()
+        if current_instruction is None:
+            print("[ISSUE] No instruction to issue this cycle.")
+            return
+
         check = current_instruction.opcode
         issued = False
         current_ROB = None
         if check == "Add.d":
-            
             print(self.ROB.getEntries())
             #add to ROB and RAT regardless if we must wait for RS space
             current_ROB = "ROB" + str(self.ROB.getEntries()+1)
@@ -154,10 +158,14 @@ Helper functions for ISSUE
                 self.fs_fp_add.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF))
             else:
                 #stall
-                pass              
-    
+                pass
+        else:
+            print("[ISSUE] Unsupported instruction for issue:", check)
+            pass
 
     def fetch(self):
+        if len(self.instruction_queue) == 0:
+            return None
         current_instruction = self.instruction_queue.popleft()
         return current_instruction
     def decode(self):
@@ -167,15 +175,22 @@ Helper functions for ISSUE
     # Checks the reservation stations for ready instructions, if they are ready, executes them
     # Will simulate cycles needed for each functional unit
     def execute(self):
-        for i in self.FP_adder_RS:
-            if i.status == True:
-                #check if operands are ready
-                if i.tag1 == None and i.tag2 == None:
-                    #execute instruction
-                    result = self.INT_adder(i.value1, i.value2)  
-                    #clear RS entry
-                    i.del_entry()
-        
+        for rs_unit in self.fs_fp_add.table:
+            if self.fs_fp_add.check_rs_full() == False:
+                #execute instruction
+                if rs_unit.value1 is not None and rs_unit.value2 is not None:
+                    rs_unit.set_cycles(self.fs_fp_add.cycles_per_instruction)
+                    self.fs_fp_add.use_fu_unit()
+                    
+                if rs_unit.get_cycles() is not None and rs_unit.get_cycles() > 0:
+                    rs_unit.decrement_cycles()
+
+                if rs_unit.get_cycles() == 0:
+                    rs_unit.set_cycles(self.fs_fp_add.cycles_per_instruction)
+                    self.fs_fp_add.DST_value = rs_unit.value1 + rs_unit.value2
+                    print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {self.fs_fp_add.DST_value}")
+                    self.fs_fp_add.release_fu_unit()
+
     def write_back(self):
         pass
     
