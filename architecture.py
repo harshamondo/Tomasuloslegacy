@@ -266,7 +266,13 @@ Helper functions for ISSUE
             dest_reg, result = self.CDB.pop()
             print(f"[WRITE BACK] CDB updating {dest_reg} with value {result}")
             # writing to the ARF is done by the commit stage
-            # self.ARF.write(dest_reg, result)
+            for rs_unit in self.fs_fp_add.table:
+                if rs_unit.tag1 == dest_reg:
+                    rs_unit.value1 = result
+                    print(f"[WRITE BACK] Updated RS Unit {rs_unit} value1 with {result}")
+                if rs_unit.tag2 == dest_reg:
+                    rs_unit.value2 = result
+                    print(f"[WRITE BACK] Updated RS Unit {rs_unit} value2 with {result}")
 
             # Update ROB entry
             rob_entry = self.RAT.read(dest_reg)
