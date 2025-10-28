@@ -9,6 +9,7 @@ from modules.arf import ARF
 from modules.rat import RAT
 from modules.helper import is_arf
 
+# Overall class that determines the architecture of the CPU
 class Architecture:
     def __init__(self,filename = None):
         self.filename = filename
@@ -79,14 +80,10 @@ class Architecture:
 
         self.CDB = deque()
 
-    """
-Helper functions for ISSUE
-"""
+    # Helper functions for ISSUE
     # Fetch instructions from a file
     def parse(self):
-            """
-            Reads instructions from a file and returns them as a list of (opcode, operands) tuples.
-            """
+            # Reads instructions from a file and returns them as a list of (opcode, operands) tuples.
             instructions = []
             with open(self.filename, 'r') as f:
                 for line in f:
@@ -102,9 +99,7 @@ Helper functions for ISSUE
 
 
     def gen_instructions(self,instruction_list):
-        """
-        Fetches instructions from instruction_list, decodes them into Instruction objects, and puts them into the global instruction_queue.
-        """
+        # Fetches instructions from instruction_list, decodes them into Instruction objects, and puts them into the global instruction_queue.
         while instruction_list:
             instr = instruction_list.pop(0)
             # If already tuple (opcode, operands), just use it
@@ -119,9 +114,8 @@ Helper functions for ISSUE
                     operands = parts[1:]
                     self.instruction_queue.append(Instruction(opcode, operands))
 
-    """
-    ISSUE --------------------------------------------------------------
-    """
+
+    # ISSUE --------------------------------------------------------------
     def init_instr(self):
         instructions_list = self.parse()
         self.gen_instructions(instructions_list)
@@ -172,7 +166,8 @@ Helper functions for ISSUE
                         type   ="fs_fp_add",
                         opcode =current_instruction.opcode,
                         tag1   =current_instruction.get_src1(),
-                        tag2   =current_instruction.get_src2()
+                        tag2   =current_instruction.get_src2(),
+                        cycles_issued=self.clock
                     )
 
                     print(f"[ISSUE] Created RS Unit: {rsu}")
@@ -219,6 +214,7 @@ Helper functions for ISSUE
     # Will simulate cycles needed for each functional unit
     def execute(self):
         for rs_unit in self.fs_fp_add.table:
+            # Floating Point Adder Execution
             if self.fs_fp_add.check_rs_full() == False:
                 #execute instruction
                 # first check if operands are ready
@@ -230,16 +226,22 @@ Helper functions for ISSUE
                     print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
                     self.fs_fp_add.use_fu_unit()
 
+                # decrement cycles left if already executing
                 elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 0:
                     rs_unit.cycles_left -= 1
                     print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
 
+                # complete execution if cycles left is 0
                 elif rs_unit.cycles_left == 0:
                     rs_unit.DST_value = rs_unit.value1 + rs_unit.value2
                     rs_unit.value1 = None
                     rs_unit.value2 = None
                     print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
                     self.fs_fp_add.release_fu_unit()
+            
+            #
+            # TODO: Add execution logic for other functional units
+            #
 
     def write_back(self):
         print("[WRITE BACK] Checking RS Units for write back...")
@@ -247,6 +249,7 @@ Helper functions for ISSUE
         # First handle the outputs from the reservation stations
         for rs_unit in self.fs_fp_add.table:
             print(f"[WRITE BACK] RS Unit: {rs_unit}")
+            # Check if execution is complete and result is ready
             if rs_unit.cycles_left == 0 and rs_unit.DST_value is not None:
                 # Write back result to ARF and update ROB
                 result = rs_unit.DST_value
@@ -254,11 +257,15 @@ Helper functions for ISSUE
 
                 # Temporary print statement for debugging
                 print(f"[WRITE BACK] Writing back result {result} to {dest_reg}")
+                #
+                # TODO : Implement CDB arbitration logic
+                #
                 self.CDB.append((dest_reg, result))
 
                 # Remove RS entry
                 self.fs_fp_add.table.remove(rs_unit)
                 print(f"[WRITE BACK] Removed RS Unit {rs_unit} after write back.")
+                break # Only handle one per requirements
         
         # Next, handle the Common Data Bus (CDB) updates
         if len(self.CDB) > 0:
@@ -279,6 +286,7 @@ Helper functions for ISSUE
             if rob_entry and rob_entry.startswith("ROB"):
                 self.ROB.update(rob_entry, result)
     
+    # COMMIT --------------------------------------------------------------
     def commit(self):
         if self.ROB.getEntries() > 0:
             for i in range(1, self.ROB.max_entries + 1):

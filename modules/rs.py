@@ -17,13 +17,14 @@ class RS_Unit:
             self.value1 = None
             self.value2 = None
             self.cycles_left = None
+            self.cycle_issued = None
 
       # our current architecture create objects, our del_entry should destory the object it. This needs to be fixed later.
       # This could also be removed and added as a function to destory the object in the RS_Table class
       # def del_entry(self):
       #       self.__init__()
 
-      def add_entry(self,status = None, DST_tag = None, type = None, opcode = None, tag1 = None, tag2 = None, reg1 = None, reg2 = None):
+      def add_entry(self,status = None, DST_tag = None, type = None, opcode = None, tag1 = None, tag2 = None, reg1 = None, reg2 = None, cycles_issued = None):
             #this function will recieve src operands and check if the registers point to ARF or a ROB entry and update accordingly
             self.status = status
             self.DST_tag = DST_tag
@@ -31,6 +32,7 @@ class RS_Unit:
             self.tag1 = tag1
             self.tag2 = tag2
             self.type = type
+            self.cycle_issued = cycles_issued
             
             #if the rat points to ARF then find the ARF value, if not write the ROB entry to the RS
 

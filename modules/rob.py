@@ -2,6 +2,9 @@ class ROB:
     def __init__(self):
         self.data = {}
         self.entries = 0
+        self.head = 0
+        self.tail = 0
+        self.max_entries = 16 
       
     def read(self, address):
         return self.data.get(address, None)
