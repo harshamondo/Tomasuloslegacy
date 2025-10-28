@@ -1,3 +1,5 @@
+import re 
+
 # Reservation Station Unit - used to represent each entry in a reservation station
 # [status][DST_tag][opcode][tag1][tag2][value1][value2]
 # will slowly count clock cycles to simulate execution time
@@ -18,11 +20,12 @@ class RS_Unit:
       def del_entry(self):
             self.__init__()
 
-      def add_entry(self,status = None, DST_tag = None, opcode = None, reg1 = None, reg2 = None):
+      def add_entry(self,status = None, DST_tag = None, type = None, opcode = None, reg1 = None, reg2 = None):
             #this function will recieve src operands and check if the registers point to ARF or a ROB entry and update accordingly
             self.status = status
             self.DST_tag = DST_tag
             self.opcode = opcode
+            self.type = type
             
             #if the rat points to ARF then find the ARF value, if not write the ROB entry to the RS
             if self.RAT[int(reg1[1:])].current_alias[:3] == "ARF":
@@ -69,12 +72,22 @@ class RS_Table:
         self.table.append(rs_unit)
 
     def __str__(self):
-        print(f"Reservation Station Table Type: {self.type}")
-        print(f"Number of Units: {self.num_units}")
-        print(f"Number of Functional Units: {self.num_FU_units}")
-        print(f"Busy Functional Units: {self.busy_FU_units}")
-        for unit in self.table:
-            print(unit.__dict__)
+        # Build a string instead of printing directly
+            output = []
+            output.append(f"Reservation Station Table Type: {self.type}")
+            output.append(f"Number of Units: {self.num_units}")
+            output.append(f"Number of Functional Units: {self.num_FU_units}")
+            output.append(f"Busy Functional Units: {self.busy_FU_units}")
+            output.append("Current Entries:")
+
+            if not self.table:
+                  output.append("[Empty]")
+            else:
+                  for i, unit in enumerate(self.table):
+                        output.append(f"  [{i}] {unit}")
+
+            # Join everything into a single string and return it
+            return "\n".join(output)
 
     def check_rs_full(self):
         return len(self.table) >= self.num_units

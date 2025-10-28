@@ -7,6 +7,7 @@ from modules.rob import ROB
 from modules.rs import RS_Unit, RS_Table
 from modules.arf import ARF
 from modules.rat import RAT
+from modules.helper import is_arf
 
 class Architecture:
     def __init__(self,filename = None):
@@ -155,19 +156,47 @@ Helper functions for ISSUE
 
             #check for space in RS
             if len(self.fs_fp_add.table) < self.FP_adder_rs_num:
-                self.fs_fp_add.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF))
+                print(f"[ISSUE] Issuing instruction {current_instruction} to FS/FP ADD RS.")
+
+                rsu = RS_Unit()
+
+                rsu.add_entry(
+                    status =False,
+                    DST_tag=current_instruction.dest,
+                    type   ="fs_fp_add",
+                    opcode =current_instruction.opcode,
+                    reg1   =current_instruction.src1,
+                    reg2   =current_instruction.src2,
+                    ARF    =self.ARF, 
+                    RAT    =self.RAT
+                )
+
+                print(f"[ISSUE] Created RS Unit: {rsu}")
+                self.fs_fp_add.table.append(rsu)
+                print(f"[ISSUE] FS/FP ADD RS after issuing: {[str(unit) for unit in self.fs_fp_add.table]}")
             else:
-                #stall
-                pass
+                print(f"[ISSUE] Stalling: No space in FS/FP ADD RS for instruction {current_instruction}.")          
         else:
             print("[ISSUE] Unsupported instruction for issue:", check)
-            pass
+            
+        print("[ISSUE] #######################")
+        # Go through the RS table and check for if the values are in the ARF or waiting on tags
+        for rs_unit in self.fs_fp_add.table:
+            alias1 = self.RAT.read(rs_unit.tag1)
+            alias2 = self.RAT.read(rs_unit.tag2)
+            print(f"[ISSUE] Checking RS Unit {rs_unit}: tag1={rs_unit.tag1} (alias: {alias1}), tag2={rs_unit.tag2} (alias: {alias2})")
+            if is_arf(alias1) and is_arf(alias2):
+                rs_unit.value1 = self.ARF.read(rs_unit.tag1)
+                rs_unit.value2 = self.ARF.read(rs_unit.tag2)
+                print(f"[ISSUE] RS Unit {rs_unit} is ready with values {rs_unit.value1} and {rs_unit.value2}.")
+                rs_unit.status = True
 
     def fetch(self):
         if len(self.instruction_queue) == 0:
             return None
         current_instruction = self.instruction_queue.popleft()
         return current_instruction
+    
     def decode(self):
         pass
         
@@ -178,6 +207,7 @@ Helper functions for ISSUE
         for rs_unit in self.fs_fp_add.table:
             if self.fs_fp_add.check_rs_full() == False:
                 #execute instruction
+                print(f"[EXECUTE] Executing instruction {rs_unit.value1} {rs_unit.opcode} {rs_unit.value2} for destination {rs_unit.DST_tag}")
                 if rs_unit.value1 is not None and rs_unit.value2 is not None:
                     rs_unit.set_cycles(self.fs_fp_add.cycles_per_instruction)
                     self.fs_fp_add.use_fu_unit()

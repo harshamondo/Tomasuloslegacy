@@ -6,24 +6,33 @@
 # Importing necessary classes from other modules -- these are modules you can work on.
 from architecture import Architecture
 
+def print_ARF_RAT(arch):
+    print("Architectural Register File (ARF) Contents:")
+    for i in range(1, 33):
+        print(f"R{i}: {arch.ARF.read('R'+ str(i))}")
+    for i in range(1, 33):
+        print(f"F{i}: {arch.ARF.read('F'+ str(i))}")
+
+    print("\nRegister Alias Table (RAT) Contents:")
+    for i in range(1, 33):
+        print(f"R{i}: {arch.RAT.read('R'+ str(i))}")
+    for i in range(1, 33):
+        print(f"F{i}: {arch.RAT.read('F'+ str(i))}")
+
 def check_init():
     loot = Architecture("instruction_sets/instructions.txt")
-    for i in range(1,33):
-        print(loot.ARF.read("R"+ str(i)))
-        print(loot.RAT.read("R"+ str(i)))
+    print_ARF_RAT(loot)
 
-    for i in range(1,33):
-        print(loot.ARF.read("F"+ str(i)))
-        print(loot.RAT.read("F"+ str(i)))
-
-    for i in range(0,60):
+    for i in range(0,5):
         print("Issuing cycle number:", loot.clock)
         loot.issue()
-        loot.fs_fp_add.table[0].print_RS()
-        #loot.issue()
-        #loot.fs_fp_add.table[1].print_RS()
+        print(f"[DEBUG] {loot.fs_fp_add}")
+        # loot.fs_fp_add.table[0].print_RS()
+        # loot.issue()
+        # loot.fs_fp_add.table[1].print_RS()
         loot.execute()
         loot.clock += 1
+        # print_ARF_RAT(loot)
 
 # Don't use this, use the correct __name__ guard below
 def main():
@@ -37,9 +46,9 @@ def main():
           curr = loot.RAT[i]
           print(curr.ARF_reg,loot.RAT.current_alias)
 
-    # # print("Instructions in queue:")
-    # # for instr in loot.instruction_queue:
-    # #     print(instr)
+    # print("Instructions in queue:")
+    # for instr in loot.instruction_queue:
+    #     print(instr)
 
 if __name__ == "__main__":
 	check_init()
