@@ -160,6 +160,9 @@ Helper functions for ISSUE
 
                 rsu = RS_Unit()
 
+                rsu.RAT = self.RAT
+                rsu.ARF = self.ARF
+
                 rsu.add_entry(
                     status =False,
                     DST_tag=current_instruction.dest,
@@ -167,8 +170,6 @@ Helper functions for ISSUE
                     opcode =current_instruction.opcode,
                     reg1   =current_instruction.src1,
                     reg2   =current_instruction.src2,
-                    ARF    =self.ARF, 
-                    RAT    =self.RAT
                 )
 
                 print(f"[ISSUE] Created RS Unit: {rsu}")

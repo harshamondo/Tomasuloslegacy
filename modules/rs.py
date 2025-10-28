@@ -1,4 +1,5 @@
 import re 
+from modules.helper import is_arf
 
 # Reservation Station Unit - used to represent each entry in a reservation station
 # [status][DST_tag][opcode][tag1][tag2][value1][value2]
@@ -17,6 +18,8 @@ class RS_Unit:
             self.value2 = None
             self.cycles_left = None
 
+      # our current architecture create objects, our del_entry should destory the object it. This needs to be fixed later.
+      # This could also be removed and added as a function to destory the object in the RS_Table class
       def del_entry(self):
             self.__init__()
 
@@ -28,15 +31,34 @@ class RS_Unit:
             self.type = type
             
             #if the rat points to ARF then find the ARF value, if not write the ROB entry to the RS
-            if self.RAT[int(reg1[1:])].current_alias[:3] == "ARF":
-                  self.value1 = self.ARF[self.RAT[int(reg1[1:])]].value
-            else:
-                  self.tag1 = self.RAT[int(reg1[1:])].current_alias
 
-            if self.RAT[int(reg2[1:])].current_alias[:3] == "ARF":
-                  self.value1 = self.ARF[self.RAT[int(reg2[1:])]].value
+            alias1 = self.RAT.read(reg1)
+            if alias1 and is_arf(alias1):
+                  self.value1 = self.ARF.read(reg1)   # operand ready in ARF
+                  self.tag1 = None
             else:
-                  self.tag1 = self.RAT[int(reg2[1:])].current_alias
+                  self.value1 = None
+                  self.tag1 = alias1                  # wait on ROB tag (could be None)
+
+            alias2 = self.RAT.read(reg2)
+            if alias2 and is_arf(alias2):
+                  self.value2 = self.ARF.read(reg2)
+                  self.tag2 = None
+            else:
+                  self.value2 = None
+                  self.tag2 = alias2
+
+            self.status = self.value1 is not None and self.value2 is not None
+
+            # if self.RAT[int(reg1[1:])].current_alias[:3] == "ARF":
+            #       value1 = self.ARF[self.RAT[int(reg1[1:])]].value
+            # else:
+            #       tag1 = self.RAT[int(reg1[1:])].current_alias
+
+            # if self.RAT[int(reg2[1:])].current_alias[:3] == "ARF":
+            #       value1 = self.ARF[self.RAT[int(reg2[1:])]].value
+            # else:
+            #       tag1 = self.RAT[int(reg2[1:])].current_alias
       
       def print_RS(self):
             print(f"RS Unit - Status: {self.status}, DST_tag: {self.DST_tag}, Opcode: {self.opcode}, Tag1: {self.tag1}, Tag2: {self.tag2}, Value1: {self.value1}, Value2: {self.value2}")
