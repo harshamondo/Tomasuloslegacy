@@ -49,3 +49,33 @@ class Instruction:
 	def __del__(self):
 		# Add any cleanup code here if needed
 		pass
+
+	# Define the getters and setters if needed
+	def get_opcode(self):
+		return self.opcode
+	def set_opcode(self, opcode):
+		self.opcode = opcode
+	def get_operands(self):
+		return self.operands
+	def set_operands(self, operands):
+		self.operands = operands
+	def get_dest(self):
+		return self.dest
+	def set_dest(self, dest):
+		self.dest = dest
+	def get_src1(self):
+		return self.src1
+	def set_src1(self, src1):
+		self.src1 = src1
+	def get_src2(self):
+		return self.src2
+	def set_src2(self, src2):
+		self.src2 = src2
+	def get_offset(self):
+		return self.offset
+	def set_offset(self, offset):
+		self.offset = offset
+	def get_immediate(self):
+		return self.immediate
+	def set_immediate(self, immediate):
+		self.immediate = immediate

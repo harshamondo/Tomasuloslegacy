@@ -19,11 +19,15 @@ def print_ARF_RAT(arch):
     for i in range(1, 33):
         print(f"F{i}: {arch.RAT.read('F'+ str(i))}")
 
+def print_ROB(arch):
+    print("\nReorder Buffer (ROB) Contents:")
+    print(arch.ROB)
+
 def check_init():
     loot = Architecture("instruction_sets/instructions.txt")
     print_ARF_RAT(loot)
 
-    for i in range(0,5):
+    for i in range(0,20):
         print("Issuing cycle number:", loot.clock)
         loot.issue()
         print(f"[DEBUG] {loot.fs_fp_add}")
@@ -31,8 +35,13 @@ def check_init():
         # loot.issue()
         # loot.fs_fp_add.table[1].print_RS()
         loot.execute()
+        loot.write_back()
         loot.clock += 1
         # print_ARF_RAT(loot)
+
+    print("Final ARF and RAT contents after 5 issue/execute cycles:")
+    print_ARF_RAT(loot)
+    print_ROB(loot)
 
 # Don't use this, use the correct __name__ guard below
 def main():
