@@ -7,6 +7,7 @@ from modules.rob import ROB
 from modules.rs import RS_Unit, RS_Table
 from modules.arf import ARF
 from modules.rat import RAT
+from modules.helper import is_arf
 
 class Architecture:
     def __init__(self,filename = None):
@@ -69,10 +70,14 @@ class Architecture:
         self.RAT = RAT()
         self.init_ARF_RAT()
 
+        self.ARF.write("F2",10)  
+        self.ARF.write("F3",10)  
+
         #initial same number of rows as instructions in queue for now
         #ROB should be a queue
         self.ROB = ROB()
 
+        self.CDB = deque()
 
     """
 Helper functions for ISSUE
@@ -139,35 +144,73 @@ Helper functions for ISSUE
         #think about how we are going to stall
         #ask prof if we need to have official states like fetch and decode since our instruction class already handles fetch+decode
         current_instruction = self.fetch()
-        if current_instruction is None:
+        if current_instruction is not None:
             print("[ISSUE] No instruction to issue this cycle.")
-            return
+        
+            check = current_instruction.opcode
+            issued = False
+            current_ROB = None
+            if check == "Add.d":
+                print(self.ROB.getEntries())
+                #add to ROB and RAT regardless if we must wait for RS space
+                current_ROB = "ROB" + str(self.ROB.getEntries()+1)
+                self.ROB.write(current_ROB, current_instruction.dest, None, None)
+                self.RAT.write(current_instruction.dest,current_ROB)
 
-        check = current_instruction.opcode
-        issued = False
-        current_ROB = None
-        if check == "Add.d":
-            print(self.ROB.getEntries())
-            #add to ROB and RAT regardless if we must wait for RS space
-            current_ROB = "ROB" + str(self.ROB.getEntries()+1)
-            self.ROB.write(current_ROB,current_instruction.dest,None,None)
-            self.RAT.write(current_instruction.dest,current_ROB)
+                #check for space in RS
+                if len(self.fs_fp_add.table) < self.FP_adder_rs_num:
+                    print(f"[ISSUE] Issuing instruction {current_instruction} to FS/FP ADD RS.")
 
-            #check for space in RS
-            if len(self.fs_fp_add.table) < self.FP_adder_rs_num:
-                self.fs_fp_add.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF))
+                    rsu = RS_Unit()
+
+                    rsu.RAT = self.RAT
+                    rsu.ARF = self.ARF
+
+                    rsu.add_entry(
+                        status =False,
+                        DST_tag=current_instruction.dest,
+                        type   ="fs_fp_add",
+                        opcode =current_instruction.opcode,
+                        tag1   =current_instruction.get_src1(),
+                        tag2   =current_instruction.get_src2()
+                    )
+
+                    print(f"[ISSUE] Created RS Unit: {rsu}")
+                    self.fs_fp_add.table.append(rsu)
+                    print(f"[ISSUE] FS/FP ADD RS after issuing: {[str(unit) for unit in self.fs_fp_add.table]}")
+                else:
+                    print(f"[ISSUE] Stalling: No space in FS/FP ADD RS for instruction {current_instruction}.")          
             else:
-                #stall
-                pass
+                print("[ISSUE] Unsupported instruction for issue:", check)
+
         else:
-            print("[ISSUE] Unsupported instruction for issue:", check)
-            pass
+            print("[ISSUE] No instruction to issue this cycle.")
+
+        print("[ISSUE] #######################")
+        # Go through the RS table and check for if the values are in the ARF or waiting on tags
+        for rs_unit in self.fs_fp_add.table:
+            alias1 = self.RAT.read(rs_unit.tag1)
+            alias2 = self.RAT.read(rs_unit.tag2)
+            print(f"[ISSUE] Checking RS Unit {rs_unit}: tag1={rs_unit.tag1} (alias: {alias1}), tag2={rs_unit.tag2} (alias: {alias2})")
+            if is_arf(alias1) and rs_unit.value1 is None:
+                rs_unit.value1 = self.ARF.read(rs_unit.tag1)
+                print(f"[ISSUE] RS Unit {rs_unit} is ready with values {rs_unit.value1}.")     
+            
+            if is_arf(alias2) and rs_unit.value2 is None:
+                rs_unit.value2 = self.ARF.read(rs_unit.tag2)
+                print(f"[ISSUE] RS Unit {rs_unit} is ready with value2 {rs_unit.value2}.")
+
+            if rs_unit.value1 is not None and rs_unit.value2 is not None:
+                rs_unit.status = True
+                print(f"[ISSUE] RS Unit {rs_unit} is now ready for execution.")
+                
 
     def fetch(self):
         if len(self.instruction_queue) == 0:
             return None
         current_instruction = self.instruction_queue.popleft()
         return current_instruction
+    
     def decode(self):
         pass
         
@@ -178,21 +221,63 @@ Helper functions for ISSUE
         for rs_unit in self.fs_fp_add.table:
             if self.fs_fp_add.check_rs_full() == False:
                 #execute instruction
-                if rs_unit.value1 is not None and rs_unit.value2 is not None:
-                    rs_unit.set_cycles(self.fs_fp_add.cycles_per_instruction)
+                # first check if operands are ready
+                # then check if FU is available
+                # then execute instruction for required cycles
+                if rs_unit.value1 is not None and rs_unit.value2 is not None and rs_unit.cycles_left is None and self.fs_fp_add.busy_FU_units < self.fs_fp_add.num_FU_units:
+                    print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2}")
+                    rs_unit.cycles_left = self.fs_fp_add.cycles_per_instruction
+                    print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
                     self.fs_fp_add.use_fu_unit()
-                    
-                if rs_unit.get_cycles() is not None and rs_unit.get_cycles() > 0:
-                    rs_unit.decrement_cycles()
 
-                if rs_unit.get_cycles() == 0:
-                    rs_unit.set_cycles(self.fs_fp_add.cycles_per_instruction)
-                    self.fs_fp_add.DST_value = rs_unit.value1 + rs_unit.value2
-                    print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {self.fs_fp_add.DST_value}")
+                elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 0:
+                    rs_unit.cycles_left -= 1
+                    print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
+
+                elif rs_unit.cycles_left == 0:
+                    rs_unit.DST_value = rs_unit.value1 + rs_unit.value2
+                    rs_unit.value1 = None
+                    rs_unit.value2 = None
+                    print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
                     self.fs_fp_add.release_fu_unit()
 
     def write_back(self):
-        pass
+        print("[WRITE BACK] Checking RS Units for write back...")
+
+        # First handle the outputs from the reservation stations
+        for rs_unit in self.fs_fp_add.table:
+            print(f"[WRITE BACK] RS Unit: {rs_unit}")
+            if rs_unit.cycles_left == 0 and rs_unit.DST_value is not None:
+                # Write back result to ARF and update ROB
+                result = rs_unit.DST_value
+                dest_reg = rs_unit.DST_tag
+
+                # Temporary print statement for debugging
+                print(f"[WRITE BACK] Writing back result {result} to {dest_reg}")
+                self.CDB.append((dest_reg, result))
+
+                # Remove RS entry
+                self.fs_fp_add.table.remove(rs_unit)
+                print(f"[WRITE BACK] Removed RS Unit {rs_unit} after write back.")
+        
+        # Next, handle the Common Data Bus (CDB) updates
+        if len(self.CDB) > 0:
+
+            dest_reg, result = self.CDB.pop()
+            print(f"[WRITE BACK] CDB updating {dest_reg} with value {result}")
+            # writing to the ARF is done by the commit stage
+            for rs_unit in self.fs_fp_add.table:
+                if rs_unit.tag1 == dest_reg:
+                    rs_unit.value1 = result
+                    print(f"[WRITE BACK] Updated RS Unit {rs_unit} value1 with {result}")
+                if rs_unit.tag2 == dest_reg:
+                    rs_unit.value2 = result
+                    print(f"[WRITE BACK] Updated RS Unit {rs_unit} value2 with {result}")
+
+            # Update ROB entry
+            rob_entry = self.RAT.read(dest_reg)
+            if rob_entry and rob_entry.startswith("ROB"):
+                self.ROB.update(rob_entry, result)
     
     def FP_adder(self,reg1,reg2):
         pass

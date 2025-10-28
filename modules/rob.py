@@ -5,10 +5,10 @@ class ROB:
       
     def read(self, address):
         return self.data.get(address, None)
-    def write(self, address, value,alias,done):
+    
+    def write(self, address, value, alias, done):
         self.entries+=1
         self.data[address] = alias,value,done
-    
 
     def clear(self,address):
         self.data.pop(address, None)
@@ -17,6 +17,10 @@ class ROB:
     def getEntries(self):
         return self.entries
 
-
     def __str__(self):
         return f"ROB_entry(data={self.data})"
+    
+    def update(self,address,value):
+        if address in self.data:
+            alias,_,done = self.data[address]
+            self.data[address] = value,_,True

@@ -1,3 +1,6 @@
+import re 
+from modules.helper import is_arf
+
 # Reservation Station Unit - used to represent each entry in a reservation station
 # [status][DST_tag][opcode][tag1][tag2][value1][value2]
 # will slowly count clock cycles to simulate execution time
@@ -15,43 +18,56 @@ class RS_Unit:
             self.value2 = None
             self.cycles_left = None
 
-      def del_entry(self):
-            self.__init__()
+      # our current architecture create objects, our del_entry should destory the object it. This needs to be fixed later.
+      # This could also be removed and added as a function to destory the object in the RS_Table class
+      # def del_entry(self):
+      #       self.__init__()
 
-      def add_entry(self,status = None, DST_tag = None, opcode = None, reg1 = None, reg2 = None):
+      def add_entry(self,status = None, DST_tag = None, type = None, opcode = None, tag1 = None, tag2 = None, reg1 = None, reg2 = None):
             #this function will recieve src operands and check if the registers point to ARF or a ROB entry and update accordingly
             self.status = status
             self.DST_tag = DST_tag
             self.opcode = opcode
+            self.tag1 = tag1
+            self.tag2 = tag2
+            self.type = type
             
             #if the rat points to ARF then find the ARF value, if not write the ROB entry to the RS
-            if self.RAT[int(reg1[1:])].current_alias[:3] == "ARF":
-                  self.value1 = self.ARF[self.RAT[int(reg1[1:])]].value
-            else:
-                  self.tag1 = self.RAT[int(reg1[1:])].current_alias
 
-            if self.RAT[int(reg2[1:])].current_alias[:3] == "ARF":
-                  self.value1 = self.ARF[self.RAT[int(reg2[1:])]].value
-            else:
-                  self.tag1 = self.RAT[int(reg2[1:])].current_alias
+            # alias1 = self.RAT.read(reg1)
+            # if alias1 and is_arf(alias1):
+            #       self.value1 = self.ARF.read(reg1)   # operand ready in ARF
+            #       self.tag1 = None
+            # else:
+            #       self.value1 = None
+            #       self.tag1 = alias1                  # wait on ROB tag (could be None)
+
+            # alias2 = self.RAT.read(reg2)
+            # if alias2 and is_arf(alias2):
+            #       self.value2 = self.ARF.read(reg2)
+            #       self.tag2 = None
+            # else:
+            #       self.value2 = None
+            #       self.tag2 = alias2
+
+            # self.status = self.value1 is not None and self.value2 is not None
+
+            # if self.RAT[int(reg1[1:])].current_alias[:3] == "ARF":
+            #       value1 = self.ARF[self.RAT[int(reg1[1:])]].value
+            # else:
+            #       tag1 = self.RAT[int(reg1[1:])].current_alias
+
+            # if self.RAT[int(reg2[1:])].current_alias[:3] == "ARF":
+            #       value1 = self.ARF[self.RAT[int(reg2[1:])]].value
+            # else:
+            #       tag1 = self.RAT[int(reg2[1:])].current_alias
       
       def print_RS(self):
             print(f"RS Unit - Status: {self.status}, DST_tag: {self.DST_tag}, Opcode: {self.opcode}, Tag1: {self.tag1}, Tag2: {self.tag2}, Value1: {self.value1}, Value2: {self.value2}")
 
       def __str__(self):
-            return (f"RS_Unit(status={self.status}, DST_tag={self.DST_tag}, opcode={self.opcode}, "
+            return (f"RS_Unit(status={self.status}, DST_tag={self.DST_tag}, DST_value={self.DST_value}, opcode={self.opcode}, "
                     f"tag1={self.tag1}, tag2={self.tag2}, value1={self.value1}, value2={self.value2})")
-      
-      def set_cycles(self, cycles):
-            self.cycles_left = cycles
-
-      def get_cycles(self):
-            return self.cycles_left
-
-      def decrement_cycles(self):
-            if self.cycles_left is not None and self.cycles_left > 0:
-                  self.cycles_left -= 1
-            return self.cycles_left
 
 # Reservation Station Table - holds multiple RS_Unit objects
 # Type indicates the type of functional unit it is associated with (e.g., Integer Adder, FP Adder, Multiplier, Load/Store)
@@ -69,12 +85,22 @@ class RS_Table:
         self.table.append(rs_unit)
 
     def __str__(self):
-        print(f"Reservation Station Table Type: {self.type}")
-        print(f"Number of Units: {self.num_units}")
-        print(f"Number of Functional Units: {self.num_FU_units}")
-        print(f"Busy Functional Units: {self.busy_FU_units}")
-        for unit in self.table:
-            print(unit.__dict__)
+        # Build a string instead of printing directly
+            output = []
+            output.append(f"Reservation Station Table Type: {self.type}")
+            output.append(f"Number of Units: {self.num_units}")
+            output.append(f"Number of Functional Units: {self.num_FU_units}")
+            output.append(f"Busy Functional Units: {self.busy_FU_units}")
+            output.append("Current Entries:")
+
+            if not self.table:
+                  output.append("[Empty]")
+            else:
+                  for i, unit in enumerate(self.table):
+                        output.append(f"  [{i}] {unit}")
+
+            # Join everything into a single string and return it
+            return "\n".join(output)
 
     def check_rs_full(self):
         return len(self.table) >= self.num_units
