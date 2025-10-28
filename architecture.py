@@ -154,7 +154,7 @@ Helper functions for ISSUE
                 print(self.ROB.getEntries())
                 #add to ROB and RAT regardless if we must wait for RS space
                 current_ROB = "ROB" + str(self.ROB.getEntries()+1)
-                self.ROB.write(current_ROB, current_instruction.dest, None, None)
+                self.ROB.write(current_ROB, current_instruction.dest, None, False)
                 self.RAT.write(current_instruction.dest,current_ROB)
 
                 #check for space in RS
@@ -191,7 +191,7 @@ Helper functions for ISSUE
         for rs_unit in self.fs_fp_add.table:
             alias1 = self.RAT.read(rs_unit.tag1)
             alias2 = self.RAT.read(rs_unit.tag2)
-            print(f"[ISSUE] Checking RS Unit {rs_unit}: tag1={rs_unit.tag1} (alias: {alias1}), tag2={rs_unit.tag2} (alias: {alias2})")
+            print(f"[ISSUE] Checking RS Unit {rs_unit}: tag1={rs_unit.tag1} (value1: {rs_unit.value1}), tag2={rs_unit.tag2} (value2: {rs_unit.value2})")
             if is_arf(alias1) and rs_unit.value1 is None:
                 rs_unit.value1 = self.ARF.read(rs_unit.tag1)
                 print(f"[ISSUE] RS Unit {rs_unit} is ready with values {rs_unit.value1}.")     
@@ -279,14 +279,32 @@ Helper functions for ISSUE
             if rob_entry and rob_entry.startswith("ROB"):
                 self.ROB.update(rob_entry, result)
     
-    def FP_adder(self,reg1,reg2):
+    def commit(self):
+        if self.ROB.getEntries() > 0:
+            for i in range(1, self.ROB.max_entries + 1):
+                rob_entry_key = "ROB" + str(i)
+                rob_entry = self.ROB.read(rob_entry_key)
+                if rob_entry is not None:
+                    alias, value, done = rob_entry
+                    if done == False and value is not None:
+                        print(f"[COMMIT] Committing {value} to {alias} from {rob_entry_key}")
+                        done = True
+                        self.ARF.write(alias, value)
+                        if self.RAT.read(alias) == rob_entry_key:
+                            self.RAT.write(alias, "ARF" + alias[1:])  
+                        # Clear the ROB entry
+                        self.ROB.clear(rob_entry_key)
+                        # Only commit one instruction per cycle
+                        break  
+
+    def FP_adder(self, reg1, reg2):
         pass
 
-    def INT_adder(self,reg1,reg2):
+    def INT_adder(self, reg1, reg2):
         pass
 
-    def multiplier(self,reg1,reg2):
+    def multiplier(self, reg1, reg2):
         pass
-    
-    def CBD(self):
+
+    def CDB(self):
         pass

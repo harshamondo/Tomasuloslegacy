@@ -36,6 +36,7 @@ def check_init():
         # loot.fs_fp_add.table[1].print_RS()
         loot.execute()
         loot.write_back()
+        loot.commit()
         loot.clock += 1
         # print_ARF_RAT(loot)
 
