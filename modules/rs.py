@@ -1,5 +1,6 @@
 import re 
 from modules.helper import is_arf
+from typing import Callable, Any
 
 # Reservation Station Unit - used to represent each entry in a reservation station
 # [status][DST_tag][opcode][tag1][tag2][value1][value2]
@@ -75,14 +76,18 @@ class RS_Unit:
 # Type indicates the type of functional unit it is associated with (e.g., Integer Adder, FP Adder, Multiplier, Load/Store)
 # number of units indicates how many RS_Unit entries it can hold at maximum
 class RS_Table:
-    def __init__(self, type = None, num_rs_units = 0, num_FU_units = 0, cycles_per_instruction = 0):
+    def __init__(self, type = None, num_rs_units = 0, num_FU_units = 0, cycles_per_instruction = 0, op = None):
+        self.op: Callable[[Any, RS_Unit], Any] = op
         self.table = []
         self.type = type
         self.num_units = num_rs_units
         self.num_FU_units = num_FU_units
         self.cycles_per_instruction = cycles_per_instruction
         self.busy_FU_units = 0
-    
+
+    def compute(self, rs_unit: RS_Unit):
+        return self.op(self, rs_unit)
+
     def add_unit(self, rs_unit):
         self.table.append(rs_unit)
 

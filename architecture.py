@@ -7,7 +7,9 @@ from modules.rob import ROB
 from modules.rs import RS_Unit, RS_Table
 from modules.arf import ARF
 from modules.rat import RAT
-from modules.helper import is_arf
+from modules.helper import arf_from_csv, is_arf, rat_from_csv
+from pathlib import Path
+from default_generator.rat_arf_gen import print_file_arf, print_file_rat
 
 # Overall class that determines the architecture of the CPU
 class Architecture:
@@ -15,6 +17,14 @@ class Architecture:
         self.filename = filename
         self.config = "config.csv"
         
+        # Generate ARF and RAT files if they do not exist
+        # Made this to make it easier to reset the ARF and RAT files to different configurations
+        if not Path("arf.csv").is_file():
+            print_file_arf()
+
+        if not Path("rat.csv").is_file():
+            print_file_rat()
+
         #parse through config.txt and update
         #default values for testing, will update through parsing later
         self.int_adder_FU = 1
@@ -69,10 +79,12 @@ class Architecture:
         #registers 0-31 and R and 32-64 are F
         self.ARF = ARF()
         self.RAT = RAT()
-        self.init_ARF_RAT()
 
-        self.ARF.write("F2",10)  
-        self.ARF.write("F3",10)  
+        self.ARF = arf_from_csv("arf.csv")
+        self.RAT = rat_from_csv("rat.csv")
+
+        #self.ARF.write("F2",10)  
+        #self.ARF.write("F3",10)  
 
         #initial same number of rows as instructions in queue for now
         #ROB should be a queue
@@ -119,7 +131,6 @@ class Architecture:
     def init_instr(self):
         instructions_list = self.parse()
         self.gen_instructions(instructions_list)
-
 
           #debug
           #print(len(self.FP_adder_RS))
