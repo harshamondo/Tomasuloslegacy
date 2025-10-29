@@ -1,75 +1,46 @@
-import re 
-from modules.helper import is_arf
-
 # Reservation Station Unit - used to represent each entry in a reservation station
 # [status][DST_tag][opcode][tag1][tag2][value1][value2]
 # will slowly count clock cycles to simulate execution time
 # status means the value is ready for execute
+from collections import deque
 class RS_Unit:
-      def __init__(self, status = None, DST_tag = None, type = None, opcode = None, tag1 = None, tag2 = None, value1 = None, value2 = None):
-            self.status = False
-            self.DST_tag = ""
-            self.DST_value = None
-            self.type = ""
-            self.opcode = ""
-            self.tag1 = ""
-            self.tag2 = ""
+      def __init__(self,DST_tag = None, opcode = None, reg1 = None, reg2 = None, RAT_object = None, ARF_object = None, cycles_issued = None):
+            self.opcode = opcode
+            self.tag1 = None
+            self.tag2 = None
             self.value1 = None
             self.value2 = None
             self.cycles_left = None
-            self.cycle_issued = None
-
-      # our current architecture create objects, our del_entry should destory the object it. This needs to be fixed later.
-      # This could also be removed and added as a function to destory the object in the RS_Table class
-      # def del_entry(self):
-      #       self.__init__()
-
-      def add_entry(self,status = None, DST_tag = None, type = None, opcode = None, tag1 = None, tag2 = None, reg1 = None, reg2 = None, cycles_issued = None):
-            #this function will recieve src operands and check if the registers point to ARF or a ROB entry and update accordingly
-            self.status = status
-            self.DST_tag = DST_tag
-            self.opcode = opcode
-            self.tag1 = tag1
-            self.tag2 = tag2
-            self.type = type
             self.cycle_issued = cycles_issued
+            self.DST_value = None
+            self.reg1 = reg1
+            self.reg2 = reg2
+            self.ARF_tag = DST_tag
+
+            self.RAT = RAT_object
+            self.ARF = ARF_object
+
+            self.DST_tag = RAT_object.read(DST_tag)
+
+
+            if self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ROB":
+                self.tag1 = self.RAT.read(self.reg1)
+            elif self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ARF":
+                self.value1 = self.ARF.read(self.reg1)
+
             
-            #if the rat points to ARF then find the ARF value, if not write the ROB entry to the RS
-
-            # alias1 = self.RAT.read(reg1)
-            # if alias1 and is_arf(alias1):
-            #       self.value1 = self.ARF.read(reg1)   # operand ready in ARF
-            #       self.tag1 = None
-            # else:
-            #       self.value1 = None
-            #       self.tag1 = alias1                  # wait on ROB tag (could be None)
-
-            # alias2 = self.RAT.read(reg2)
-            # if alias2 and is_arf(alias2):
-            #       self.value2 = self.ARF.read(reg2)
-            #       self.tag2 = None
-            # else:
-            #       self.value2 = None
-            #       self.tag2 = alias2
-
-            # self.status = self.value1 is not None and self.value2 is not None
-
-            # if self.RAT[int(reg1[1:])].current_alias[:3] == "ARF":
-            #       value1 = self.ARF[self.RAT[int(reg1[1:])]].value
-            # else:
-            #       tag1 = self.RAT[int(reg1[1:])].current_alias
-
-            # if self.RAT[int(reg2[1:])].current_alias[:3] == "ARF":
-            #       value1 = self.ARF[self.RAT[int(reg2[1:])]].value
-            # else:
-            #       tag1 = self.RAT[int(reg2[1:])].current_alias
-      
+            if self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ROB":
+                self.tag2 = self.RAT.read(self.reg2)
+            elif self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ARF":
+                self.value2 = self.ARF.read(self.reg2)
+        
       def print_RS(self):
-            print(f"RS Unit - Status: {self.status}, DST_tag: {self.DST_tag}, Opcode: {self.opcode}, Tag1: {self.tag1}, Tag2: {self.tag2}, Value1: {self.value1}, Value2: {self.value2}")
-
+           print("Now printing RS entry:")
+           print("[",self.opcode,"]","[",self.DST_tag,"]","[",self.tag1,"]","[",self.tag2,"]","[",self.value1,"]","[",self.value2,"]")
+      
       def __str__(self):
-            return (f"RS_Unit(status={self.status}, DST_tag={self.DST_tag}, DST_value={self.DST_value}, opcode={self.opcode}, "
-                    f"tag1={self.tag1}, tag2={self.tag2}, value1={self.value1}, value2={self.value2})")
+            return (f"DST_tag={self.DST_tag}, DST_value={self.DST_value}, opcode={self.opcode}, "
+                  f"tag1={self.tag1}, tag2={self.tag2}, value1={self.value1}, value2={self.value2})")
 
 # Reservation Station Table - holds multiple RS_Unit objects
 # Type indicates the type of functional unit it is associated with (e.g., Integer Adder, FP Adder, Multiplier, Load/Store)
@@ -82,8 +53,13 @@ class RS_Table:
         self.num_FU_units = num_FU_units
         self.cycles_per_instruction = cycles_per_instruction
         self.busy_FU_units = 0
+
+       #store/load RS are queues
+        if self.type == "fs_fp_ls":
+            self.table = deque()
     
     def add_unit(self, rs_unit):
+
         self.table.append(rs_unit)
 
     def __str__(self):
