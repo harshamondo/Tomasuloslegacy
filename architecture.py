@@ -5,6 +5,7 @@ import csv
 from modules.instruction import Instruction
 from modules.rob import ROB
 from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op
+
 from modules.arf import ARF
 from modules.rat import RAT
 from modules.helper import arf_from_csv, is_arf, rat_from_csv
@@ -222,25 +223,27 @@ class Architecture:
                 ):
                     print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2}")
                     rs_unit.cycles_left = rs_table.cycles_per_instruction
+
+                    if rs_unit.written_back == True:
+                        rs_unit.written_back = False
+                        rs_unit.cycles_left -= 1
+
                     print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
                     rs_table.use_fu_unit()
 
                 # Decrement remaining cycles if currently executing
-                elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 0:
+                elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 1:
                     rs_unit.cycles_left -= 1
                     print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
-
-                # Finish when execution cycles reach 0
+                elif rs_unit.cycles_left == 1:
+                    rs_unit.cycles_left -= 1
+                    print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
+                # complete execution if cycles left is 0
                 elif rs_unit.cycles_left == 0:
-                    rs_unit.cycles_left -= 1 # Mark as completed next cycle
-                    print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for "
-                        f"destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
-                # Write the following cycle to maintain timing
-                elif rs_unit.cycles_left == -1:
                     rs_unit.DST_value = rs_table.compute(rs_unit)
                     rs_unit.value1 = None
                     rs_unit.value2 = None
-                    
+                    # print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
 
         # Release all FU units at the end of execution phase since they are pipelined and get freed up for next cycle
         rs_table.release_all_fu_units()
@@ -260,7 +263,7 @@ class Architecture:
         for rs_unit in self.fs_fp_add.table:
             print(f"[WRITE BACK] RS Unit: {rs_unit}")
             # Check if execution is complete and result is ready
-            if rs_unit.cycles_left == -1 and rs_unit.DST_value is not None:
+            if rs_unit.cycles_left == 0 and rs_unit.DST_value is not None:
                 # Write back result to ARF and update ROB
                 result = rs_unit.DST_value
                 #this needs to point to F1,F2,F3...etc
@@ -291,6 +294,10 @@ class Architecture:
                 if rs_unit.tag2 == CDB_res_reg:
                     rs_unit.value2 = result
                     print(f"[WRITE BACK] Updated RS Unit {rs_unit} value2 with {result}")
+
+                if rs_unit.value1 is not None and rs_unit.value2 is not None:
+                    print(f"[WRITE BACK] RS Unit {rs_unit} now has both operands ready: value1={rs_unit.value1}, value2={rs_unit.value2}")
+                    rs_unit.written_back = True
 
             # Update ROB entry
             # not updating
