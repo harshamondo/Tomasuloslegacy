@@ -69,10 +69,12 @@ class Architecture:
         print(f"FP Adder RS Num: {self.FP_adder_rs_num}, FP Adder FU: {self.FP_adder_FU}")
         self.fs_fp_add = RS_Table(type="fs_fp_add", num_rs_units=self.FP_adder_rs_num, num_FU_units=self.FP_adder_FU, cycles_per_instruction=self.FP_adder_cycles)
         self.fs_fp_add.add_op( ("Add.d", rs_fp_add_op) )
+        self.fs_fp_add.add_op( ("Sub.d", rs_fp_add_op) )  # Placeholder, replace with actual subtraction function!!!
+
+        # TODO : Initialize other RS_Tables for multiplier, integer adder, load/store with respective functions
         self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU)
         self.fs_mult = RS_Table(type="fs_fp_mult", num_rs_units=self.multiplier_rs_num, num_FU_units=self.multiplier_FU)
         self.fs_int_adder = RS_Table(type="fs_int_adder", num_rs_units=self.int_adder_rs_num, num_FU_units=self.int_adder_FU)
-
 
         #Initialize instruction register
         self.instruction_queue = deque()
@@ -86,9 +88,6 @@ class Architecture:
 
         self.ARF = arf_from_csv("arf.csv")
         self.RAT = rat_from_csv("rat.csv")
-
-        #self.ARF.write("F2",10)  
-        #self.ARF.write("F3",10)  
 
         #initial same number of rows as instructions in queue for now
         #ROB should be a queue
@@ -207,18 +206,19 @@ class Architecture:
     # Execute helper functions
     def parse_rs_table(self, rs_table=None):
         for rs_unit in rs_table.table:
-            # Skip empty slots (if your RS uses None or lacks opcode)
+            # Skip empty slots (if your RS uses opcode)
             if getattr(rs_unit, "opcode", None) is None:
                 continue
 
-            # Floating Point Adder Execution
+            # General execution logic for RS units
             if rs_table.check_rs_full() is False:
                 # Start execution if operands ready, not already executing, and FU available
                 if (
                     rs_unit.value1 is not None
                     and rs_unit.value2 is not None
                     and rs_unit.cycles_left is None
-                    and rs_table.busy_FU_units < rs_table.num_FU_units
+                    # TODO : Pipelined CPU - check for available FU units
+                    and rs_table.busy_FU_units < rs_table.num_FU_units 
                 ):
                     print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2}")
                     rs_unit.cycles_left = rs_table.cycles_per_instruction
@@ -240,6 +240,7 @@ class Architecture:
                     rs_table.release_fu_unit()
 
     def execute(self):
+        # Execute logic for Floating Point Adder/Subtracter RS
         self.parse_rs_table(self.fs_fp_add)
 
         #
@@ -271,11 +272,9 @@ class Architecture:
                 self.fs_fp_add.table.remove(rs_unit)
                 print(f"[WRITE BACK] Removed RS Unit {rs_unit} after write back.")
                 break # Only handle one per requirements
-        
 
         # Next, handle the Common Data Bus (CDB) updates
         if len(self.CDB) > 0:
-
             dest_reg, result = self.CDB.pop()
             print(f"[WRITE BACK] CDB updating {dest_reg} with value {result}")
             # writing to the ARF is done by the commit stage
@@ -287,11 +286,9 @@ class Architecture:
                     rs_unit.value2 = result
                     print(f"[WRITE BACK] Updated RS Unit {rs_unit} value2 with {result}")
 
-            
-            
             # Update ROB entry
-            #not updating
-            #dest reg should be F1
+            # not updating
+            # dest reg should be F1
             rob_entry = self.RAT.read(dest_reg)
             print("NOW PRINTING RELEVANT VALUES:")
             print(dest_reg)
@@ -300,6 +297,7 @@ class Architecture:
                 self.ROB.update(rob_entry, result)
     
     # COMMIT --------------------------------------------------------------
+    # TODO : Implement commit logic to use head and tail logic as per ROB design in class
     def commit(self):
         if self.ROB.getEntries() > 0:
             for i in range(1, self.ROB.max_entries + 1):
@@ -321,15 +319,3 @@ class Architecture:
                         #need to repoint the RAT table to the ARF
 
                         break  
-
-    def FP_adder(self, reg1, reg2):
-        pass
-
-    def INT_adder(self, reg1, reg2):
-        pass
-
-    def multiplier(self, reg1, reg2):
-        pass
-
-    def CDB(self):
-        pass

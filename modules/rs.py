@@ -32,7 +32,6 @@ class RS_Unit:
             elif self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ARF":
                 self.value1 = self.ARF.read(self.reg1)
 
-            
             if self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ROB":
                 self.tag2 = self.RAT.read(self.reg2)
             elif self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ARF":
