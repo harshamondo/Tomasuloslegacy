@@ -86,6 +86,9 @@ class RS_Table:
                   self.busy_FU_units -= 1
                   return True
             return False
+      
+      def release_all_fu_units(self):
+            self.busy_FU_units = 0
 
       def __str__(self):
             # Build a string instead of printing directly
