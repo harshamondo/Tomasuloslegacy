@@ -27,7 +27,6 @@ class RS_Unit:
 
             self.DST_tag = RAT_object.read(DST_tag)
 
-
             if self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ROB":
                 self.tag1 = self.RAT.read(self.reg1)
             elif self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ARF":
@@ -56,30 +55,41 @@ OpPair = tuple[str, OpFunc]
 
 # TODO : Neeed to add op tables that has a tuple set of operation name and function to compute
 class RS_Table:
-    def __init__(self, type = None, num_rs_units = 0, num_FU_units = 0, cycles_per_instruction = 0, op = None):
-      self.op = []
-      self.table = []
-      self.type = type
-      self.num_units = num_rs_units
-      self.num_FU_units = num_FU_units
-      self.cycles_per_instruction = cycles_per_instruction
-      self.busy_FU_units = 0
+      def __init__(self, type = None, num_rs_units = 0, num_FU_units = 0, cycles_per_instruction = 0, op = None):
+            self.op = []
+            self.table = []
+            self.type = type
+            self.num_units = num_rs_units
+            self.num_FU_units = num_FU_units
+            self.cycles_per_instruction = cycles_per_instruction
+            self.busy_FU_units = 0
+            #store/load RS are queues
+            if self.type == "fs_fp_ls":
+                  self.table = deque()
 
-      #store/load RS are queues
-      if self.type == "fs_fp_ls":
-            self.table = deque()
+      def check_rs_full(self):
+            return len(self.table) >= self.num_units
 
       def add_op(self, op_pair: OpPair):
-          self.op.append(op_pair)
+            self.op.append(op_pair)
 
-      def compute(self, rs_unit: RS_Unit):
-            return self.op[1](self, rs_unit)
+      def add_unit(self, rs_unit):
+            self.table.append(rs_unit)
 
-    def add_unit(self, rs_unit):
-        self.table.append(rs_unit)
+      def use_fu_unit(self):
+            if self.busy_FU_units < self.num_FU_units:
+                  self.busy_FU_units += 1
+                  return True
+            return False
+            
+      def release_fu_unit(self):
+            if self.busy_FU_units > 0:
+                  self.busy_FU_units -= 1
+                  return True
+            return False
 
-    def __str__(self):
-        # Build a string instead of printing directly
+      def __str__(self):
+            # Build a string instead of printing directly
             output = []
             output.append(f"Reservation Station Table Type: {self.type}")
             output.append(f"Number of Units: {self.num_units}")
@@ -96,23 +106,22 @@ class RS_Table:
             # Join everything into a single string and return it
             return "\n".join(output)
 
-    def check_rs_full(self):
-        return len(self.table) >= self.num_units
-    
-    def use_fu_unit(self):
-      if self.busy_FU_units < self.num_FU_units:
-            self.busy_FU_units += 1
-            return True
-      return False
+      # Compute method to execute operation based on opcode saved within the RS_Unit
+      def compute(self, rs_unit: RS_Unit) -> Any:
+            op_name = rs_unit.opcode
+            if op_name is None:
+                  raise ValueError("RS_Unit.opcode is None")
 
-    def release_fu_unit(self):
-        if self.busy_FU_units > 0:
-            self.busy_FU_units -= 1
-            return True
-        return False
+            # Linear search over registered OpPairs
+            for name, func in self.op:
+                  if name == op_name:
+                        return func(self, rs_unit) # Call the operation function, passing self and rs_unit to for computation
 
-def compute(self, rs_unit: RS_Unit):
-    return self.op(self, rs_unit)
+            available = ", ".join(n for n, _ in self.op) or "<none>"
+            raise KeyError(f"Unknown opcode '{op_name}'. Registered ops: [{available}]")
 
+# OPERATIONS used by the RS_Table compute method go here. They can use anything in the RS_Unit
+# Example operation: Floating Point Addition
+# parameters: rs_unit - the RS_Unit containing the operands, immediates, etc.
 def rs_fp_add_op(self, rs_unit: RS_Unit):
-     return rs_unit.value1 + rs_unit.value2
+      return rs_unit.value1 + rs_unit.value2
