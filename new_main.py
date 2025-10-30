@@ -25,13 +25,13 @@ def print_ROB(arch):
 
 def check_init():
     loot = Architecture("instruction_sets/instructions.txt")
-    print_ARF_RAT(loot)
+   # print_ARF_RAT(loot)
 
     for i in range(0,20):
         print("Issuing cycle number:", loot.clock)
         loot.issue()
         print(f"[DEBUG] {loot.fs_fp_add}")
-        # loot.fs_fp_add.table[0].print_RS()
+        #loot.fs_fp_add.table[i].print_RS()
         # loot.issue()
         # loot.fs_fp_add.table[1].print_RS()
         loot.execute()
@@ -39,6 +39,9 @@ def check_init():
         loot.commit()
         loot.clock += 1
         # print_ARF_RAT(loot)
+
+   
+
 
     print("Final ARF and RAT contents after 5 issue/execute cycles:")
     print_ARF_RAT(loot)
