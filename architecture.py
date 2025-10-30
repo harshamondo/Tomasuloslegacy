@@ -4,7 +4,7 @@ import csv
 
 from modules.instruction import Instruction
 from modules.rob import ROB
-from modules.rs import RS_Unit, RS_Table
+from modules.rs import RS_Unit, RS_Table, rs_fp_add_op
 from modules.arf import ARF
 from modules.rat import RAT
 from modules.helper import arf_from_csv, is_arf, rat_from_csv
@@ -67,8 +67,7 @@ class Architecture:
                     self.FP_adder_FU = int(fu_field) if fu_field.isdigit() else self.FP_adder_FU             
 
         print(f"FP Adder RS Num: {self.FP_adder_rs_num}, FP Adder FU: {self.FP_adder_FU}")
-        self.fs_fp_add = RS_Table(type="fs_fp_add", num_rs_units=self.FP_adder_rs_num, num_FU_units=self.FP_adder_FU, cycles_per_instruction=self.FP_adder_cycles)
-        self.fs_fp_add.__str__()
+        self.fs_fp_add = RS_Table(type="fs_fp_add", num_rs_units=self.FP_adder_rs_num, num_FU_units=self.FP_adder_FU, cycles_per_instruction=self.FP_adder_cycles, op={"Add.d": rs_fp_add_op})
 
         #Initialize instruction register
         self.instruction_queue = deque()
@@ -223,36 +222,48 @@ class Architecture:
     # EXECUTE --------------------------------------------------------------
     # Checks the reservation stations for ready instructions, if they are ready, executes them
     # Will simulate cycles needed for each functional unit
-    def execute(self):
-        for rs_unit in self.fs_fp_add.table:
-            # Floating Point Adder Execution
-            if self.fs_fp_add.check_rs_full() == False:
-                #execute instruction
-                # first check if operands are ready
-                # then check if FU is available
-                # then execute instruction for required cycles
-                if rs_unit.value1 is not None and rs_unit.value2 is not None and rs_unit.cycles_left is None and self.fs_fp_add.busy_FU_units < self.fs_fp_add.num_FU_units:
-                    print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2}")
-                    rs_unit.cycles_left = self.fs_fp_add.cycles_per_instruction
-                    print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
-                    self.fs_fp_add.use_fu_unit()
 
-                # decrement cycles left if already executing
+    # Execute helper functions
+    def parse_rs_table(self, rs_table=None):
+        for rs_unit in rs_table.table:
+            # Skip empty slots (if your RS uses None or lacks opcode)
+            if getattr(rs_unit, "opcode", None) is None:
+                continue
+
+            # Floating Point Adder Execution
+            if rs_table.check_rs_full() is False:
+                # Start execution if operands ready, not already executing, and FU available
+                if (
+                    rs_unit.value1 is not None
+                    and rs_unit.value2 is not None
+                    and rs_unit.cycles_left is None
+                    and rs_table.busy_FU_units < rs_table.num_FU_units
+                ):
+                    print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2}")
+                    rs_unit.cycles_left = rs_table.cycles_per_instruction
+                    print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
+                    rs_table.use_fu_unit()
+
+                # Decrement remaining cycles if currently executing
                 elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 0:
                     rs_unit.cycles_left -= 1
                     print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
 
-                # complete execution if cycles left is 0
+                # Finish when execution cycles reach 0
                 elif rs_unit.cycles_left == 0:
-                    rs_unit.DST_value = rs_unit.value1 + rs_unit.value2
+                    rs_unit.DST_value = rs_table.compute(rs_unit)
                     rs_unit.value1 = None
                     rs_unit.value2 = None
-                    print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
-                    self.fs_fp_add.release_fu_unit()
-            
-            #
-            # TODO: Add execution logic for other functional units
-            #
+                    print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for "
+                        f"destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
+                    rs_table.release_fu_unit()
+
+    def execute(self):
+        self.parse_rs_table(self.fs_fp_add)
+
+        #
+        # TODO: Add execution logic for other functional units
+        #
 
     def write_back(self):
         print("[WRITE BACK] Checking RS Units for write back...")

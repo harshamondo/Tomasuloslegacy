@@ -1,3 +1,4 @@
+from cProfile import label
 import re 
 from modules.helper import is_arf
 from typing import Callable, Any
@@ -75,21 +76,29 @@ class RS_Unit:
 # Reservation Station Table - holds multiple RS_Unit objects
 # Type indicates the type of functional unit it is associated with (e.g., Integer Adder, FP Adder, Multiplier, Load/Store)
 # number of units indicates how many RS_Unit entries it can hold at maximum
+OpFunc = Callable[[Any, 'RS_Unit'], Any]
+# OpPair tuple: (operation name, operation function)
+OpPair = tuple[str, OpFunc]
+
+# TODO : Neeed to add op tables that has a tuple set of operation name and function to compute
 class RS_Table:
     def __init__(self, type = None, num_rs_units = 0, num_FU_units = 0, cycles_per_instruction = 0, op = None):
-        self.op: Callable[[Any, RS_Unit], Any] = op
-        self.table = []
-        self.type = type
-        self.num_units = num_rs_units
-        self.num_FU_units = num_FU_units
-        self.cycles_per_instruction = cycles_per_instruction
-        self.busy_FU_units = 0
+      self.op = []
+      self.table = []
+      self.type = type
+      self.num_units = num_rs_units
+      self.num_FU_units = num_FU_units
+      self.cycles_per_instruction = cycles_per_instruction
+      self.busy_FU_units = 0
 
-    def compute(self, rs_unit: RS_Unit):
-        return self.op(self, rs_unit)
+      def add_op(self, op_pair: OpPair):
+          self.op.append(op_pair)
+
+      def compute(self, rs_unit: RS_Unit):
+            return self.op[1](self, rs_unit)
 
     def add_unit(self, rs_unit):
-        self.table.append(rs_unit)
+            self.table.append(rs_unit)
 
     def __str__(self):
         # Build a string instead of printing directly
@@ -123,3 +132,9 @@ class RS_Table:
             self.busy_FU_units -= 1
             return True
         return False
+
+def compute(self, rs_unit: RS_Unit):
+    return self.op(self, rs_unit)
+
+def rs_fp_add_op(self, rs_unit: RS_Unit):
+     return rs_unit.value1 + rs_unit.value2
