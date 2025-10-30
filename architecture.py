@@ -4,7 +4,7 @@ import csv
 
 from modules.instruction import Instruction
 from modules.rob import ROB
-from modules.rs import RS_Unit, RS_Table, rs_fp_add_op
+from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op
 from modules.arf import ARF
 from modules.rat import RAT
 from modules.helper import arf_from_csv, is_arf, rat_from_csv
