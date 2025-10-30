@@ -217,8 +217,8 @@ class Architecture:
                     rs_unit.value1 is not None
                     and rs_unit.value2 is not None
                     and rs_unit.cycles_left is None
-                    # TODO : Pipelined CPU - check for available FU units
-                    and rs_table.busy_FU_units < rs_table.num_FU_units 
+                    # TODO : Test Pipelined CPU - check for available FU units
+                    and rs_table.busy_FU_units <= rs_table.num_FU_units 
                 ):
                     print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2}")
                     rs_unit.cycles_left = rs_table.cycles_per_instruction
@@ -237,7 +237,9 @@ class Architecture:
                     rs_unit.value2 = None
                     print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for "
                         f"destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
-                    rs_table.release_fu_unit()
+
+        # Release all FU units at the end of execution phase since they are pipelined and get freed up for next cycle
+        rs_table.release_all_fu_units()
 
     def execute(self):
         # Execute logic for Floating Point Adder/Subtracter RS
