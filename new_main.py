@@ -6,6 +6,7 @@
 # Importing necessary classes from other modules -- these are modules you can work on.
 from architecture import Architecture
 
+# Helper : Function to print ARF and RAT contents
 def print_ARF_RAT(arch):
     print("Architectural Register File (ARF) Contents:")
     for i in range(1, 33):
@@ -23,12 +24,14 @@ def print_ROB(arch):
     print("\nReorder Buffer (ROB) Contents:")
     print(arch.ROB)
 
+# Helper : Function to run a test simulation
 def check_init():
     loot = Architecture("instruction_sets/instructions.txt")
    # print_ARF_RAT(loot)
+    total_cycles = 20
 
-    for i in range(0,20):
-        print("Issuing cycle number:", loot.clock)
+    for i in range(0,total_cycles-1):
+        print("----------------Issuing cycle number:", loot.clock)
         loot.issue()
         print(f"[DEBUG] {loot.fs_fp_add}")
         #loot.fs_fp_add.table[i].print_RS()
@@ -38,12 +41,10 @@ def check_init():
         loot.write_back()
         loot.commit()
         loot.clock += 1
+        print("--------------------------------------------------")
         # print_ARF_RAT(loot)
 
-   
-
-
-    print("Final ARF and RAT contents after 5 issue/execute cycles:")
+    print(f"Final ARF and RAT contents after {total_cycles} issue/execute cycles:")
     print_ARF_RAT(loot)
     print_ROB(loot)
 
