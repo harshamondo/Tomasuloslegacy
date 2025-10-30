@@ -69,7 +69,7 @@ class Architecture:
         print(f"FP Adder RS Num: {self.FP_adder_rs_num}, FP Adder FU: {self.FP_adder_FU}")
         self.fs_fp_add = RS_Table(type="fs_fp_add", num_rs_units=self.FP_adder_rs_num, num_FU_units=self.FP_adder_FU, cycles_per_instruction=self.FP_adder_cycles)
         self.fs_fp_add.add_op( ("Add.d", rs_fp_add_op) )
-        self.fs_fp_add.add_op( ("Sub.d", rs_fp_add_op) )  # Placeholder, replace with actual subtraction function!!!
+        self.fs_fp_add.add_op( ("Sub.d", rs_fp_sub_op) )  # Placeholder, replace with actual subtraction function!!!
 
         # TODO : Initialize other RS_Tables for multiplier, integer adder, load/store with respective functions
         self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU)
@@ -232,11 +232,15 @@ class Architecture:
 
                 # Finish when execution cycles reach 0
                 elif rs_unit.cycles_left == 0:
+                    rs_unit.cycles_left -= 1 # Mark as completed next cycle
+                    print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for "
+                        f"destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
+                # Write the following cycle to maintain timing
+                elif rs_unit.cycles_left == -1:
                     rs_unit.DST_value = rs_table.compute(rs_unit)
                     rs_unit.value1 = None
                     rs_unit.value2 = None
-                    print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for "
-                        f"destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
+                    
 
         # Release all FU units at the end of execution phase since they are pipelined and get freed up for next cycle
         rs_table.release_all_fu_units()
@@ -256,7 +260,7 @@ class Architecture:
         for rs_unit in self.fs_fp_add.table:
             print(f"[WRITE BACK] RS Unit: {rs_unit}")
             # Check if execution is complete and result is ready
-            if rs_unit.cycles_left == 0 and rs_unit.DST_value is not None:
+            if rs_unit.cycles_left == -1 and rs_unit.DST_value is not None:
                 # Write back result to ARF and update ROB
                 result = rs_unit.DST_value
                 #this needs to point to F1,F2,F3...etc
@@ -308,16 +312,22 @@ class Architecture:
 
                 if rob_entry is not None:
                     alias, value, done = rob_entry
+                    # print(f"[COMMIT] Checking ROB entry {rob_entry_key}: alias={alias}, value={value}, done={done}")
+
+                    # Extra cycle wait if instruction not done
                     if done == False and value is not None:
+                        print(f"[COMMIT] Waiting 1 cycle to commit {value} to {alias} from {rob_entry_key}")
+                        self.ROB.update_done(rob_entry_key, True)
+                        break
+                        
+                    if done == True:
                         print(f"[COMMIT] Committing {value} to {alias} from {rob_entry_key}")
-                        done = True
                         self.ARF.write(alias, value)
+
+                        # Update RAT to point back to ARF if it still points to this ROB entry
                         if self.RAT.read(alias) == rob_entry_key:
                             self.RAT.write(alias, "ARF" + str(int(alias[1:]) + 32))  
                         # Clear the ROB entry
                         self.ROB.clear(rob_entry_key)
                         # Only commit one instruction per cycle
-
-                        #need to repoint the RAT table to the ARF
-
                         break  

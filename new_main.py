@@ -30,7 +30,7 @@ def check_init():
    # print_ARF_RAT(loot)
     total_cycles = 20
 
-    for i in range(0,total_cycles-1):
+    for i in range(1,total_cycles):
         print("----------------Issuing cycle number:", loot.clock)
         loot.issue()
         print(f"[DEBUG] {loot.fs_fp_add}")
