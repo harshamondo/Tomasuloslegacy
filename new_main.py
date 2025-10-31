@@ -26,14 +26,17 @@ def print_ROB(arch):
 
 # Helper : Function to run a test simulation
 def check_init():
-    loot = Architecture("instruction_sets/instructions.txt")
-   # print_ARF_RAT(loot)
+    #loot = Architecture("instruction_sets/instructions.txt")
+    loot = Architecture("instruction_sets/straight_line_case.txt")
+    
+    print("Initial ARF and RAT contents:")
+    # print_ARF_RAT(loot)
     total_cycles = 20
 
     for i in range(1,total_cycles):
         print("----------------Issuing cycle number:", loot.clock)
         loot.issue()
-        print(f"[DEBUG] {loot.fs_fp_add}")
+        #print(f"[DEBUG] {loot.fs_fp_add}")
         #loot.fs_fp_add.table[i].print_RS()
         # loot.issue()
         # loot.fs_fp_add.table[1].print_RS()

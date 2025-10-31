@@ -132,3 +132,15 @@ def rs_fp_add_op(self, rs_unit: RS_Unit):
 
 def rs_fp_sub_op(self, rs_unit: RS_Unit):
       return rs_unit.value1 - rs_unit.value2
+
+def rs_fp_mul_op(self, rs_unit: RS_Unit):
+      return rs_unit.value1 * rs_unit.value2
+
+def rs_int_add_op(self, rs_unit: RS_Unit):
+      return rs_unit.value1 + rs_unit.value2
+
+def rs_int_sub_op(self, rs_unit: RS_Unit):
+      return rs_unit.value1 - rs_unit.value2
+
+def rs_int_addi_op(self, rs_unit: RS_Unit):
+      return rs_unit.value1 + rs_unit.immediate_value
