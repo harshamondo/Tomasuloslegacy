@@ -191,7 +191,7 @@ class Architecture:
         if current_instruction is not None:
             print(f"[ISSUE] Issuing instruction: {current_instruction}")
             check = current_instruction.opcode
-            issued = False
+            # issued = False
             current_ROB = None
                 
             #add to ROB and RAT regardless if we must wait for RS space
@@ -324,15 +324,15 @@ class Architecture:
                     # Write back result to ARF and update ROB
                     result = rs_unit.DST_value
                     #this needs to point to F1,F2,F3...etc
-                    dest_reg = rs_unit.ARF_tag
+                    arf_reg = rs_unit.ARF_tag
                     CDB_res_reg = rs_unit.DST_tag
 
                     # Temporary print statement for debugging
-                    print(f"[WRITE BACK] Writing back result {result} to {dest_reg}")
+                    print(f"[WRITE BACK] Writing back result {result} to {arf_reg}, getting ready to update ROB entry for {CDB_res_reg}")
                     #
                     # TODO : Implement CDB arbitration logic
                     #
-                    self.CDB.append((dest_reg, result))
+                    self.CDB.append((CDB_res_reg, arf_reg, result))
 
                     # Remove RS entry
                     rs_table.table.remove(rs_unit)
@@ -341,8 +341,8 @@ class Architecture:
 
         # Next, handle the Common Data Bus (CDB) updates
         if len(self.CDB) > 0:
-            dest_reg, result = self.CDB.pop()
-            print(f"[WRITE BACK] CDB updating {dest_reg} with value {result}")
+            CDB_res_reg, arf_reg, result = self.CDB.pop()
+            print(f"[WRITE BACK] CDB updating {arf_reg} with value {result}")
             # writing to the ARF is done by the commit stage
             for rs_unit in self.fs_fp_add.table:
                 if rs_unit.tag1 == CDB_res_reg:
@@ -360,16 +360,21 @@ class Architecture:
             # Update ROB entry
             # not updating
             # dest reg should be F1
-            rob_entry = self.RAT.read(dest_reg)
-            print("NOW PRINTING RELEVANT VALUES:")
-            print(dest_reg)
-            print(self.RAT.read(dest_reg))
-            # if rob_entry and rob_entry.startswith("ARF"):
-            #     print(f"[WRITE BACK] Destination {dest_reg} points to ARF entry {rob_entry}, no ROB update needed.")
-            #     self.ARF.write(dest_reg, result)
-            if rob_entry and rob_entry.startswith("ROB"):
-                self.ROB.update(rob_entry, result)
+            # rob_entry = self.RAT.read(arf_reg)
+            # print("NOW PRINTING RELEVANT VALUES:")
+            # print(arf_reg)
+            # print(self.RAT.read(arf_reg))
+            # # if rob_entry and rob_entry.startswith("ARF"):
+            # #     print(f"[WRITE BACK] Destination {dest_reg} points to ARF entry {rob_entry}, no ROB update needed.")
+            # #     self.ARF.write(dest_reg, result)
+            # if rob_entry and rob_entry.startswith("ROB"):
+            #     self.ROB.update(rob_entry, result)
+
+            print(f"[WRITE BACK] Completed write back for {arf_reg} with value {result}.")
+            self.ROB.update(CDB_res_reg, result)
+            print(f"[WRITE BACK] Updated ROB entry for {CDB_res_reg} with value {result}.")
             
+        print(f"[WRITE BACK] Current ROB state: {self.ROB}")
     
     # COMMIT --------------------------------------------------------------
     # TODO : Implement commit logic to use head and tail logic as per ROB design in class
