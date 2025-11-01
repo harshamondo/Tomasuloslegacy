@@ -27,7 +27,7 @@ def print_ROB(arch):
 # Helper : Function to run a test simulation
 def check_init():
     #loot = Architecture("instruction_sets/instructions.txt")
-    loot = Architecture("instruction_sets/straight_line_case.txt")
+    loot = Architecture("instruction_sets/instructions.txt")
     
     print("Initial ARF and RAT contents:")
     # print_ARF_RAT(loot)
