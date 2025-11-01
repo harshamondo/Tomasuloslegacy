@@ -227,7 +227,7 @@ class Architecture:
                 #stall due to full RS
                 #if no conditions are satisified, it must mean the targeted RS is full
                 pass
-            
+
             # print(f"[ISSUE] rs tables after issue:")
             # print(f"[ISSUE] FP Adder RS: {[str(unit) for unit in self.fs_fp_add.table]}")
             # print(f"[ISSUE] FP Multiplier RS: {[str(unit) for unit in self.fs_mult.table]}")
@@ -274,8 +274,12 @@ class Architecture:
                         rs_unit.cycles_left -= 1
 
                     if rs_unit.cycles_left == 1:
-                        rs_unit.cycles_left -= 1
+                        # rs_unit.cycles_left -= 1
                         print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
+                        rs_unit.DST_value = rs_table.compute(rs_unit)
+                        print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
+                        rs_unit.value1 = None
+                        rs_unit.value2 = None
 
                     print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
                     rs_table.use_fu_unit()
@@ -308,44 +312,35 @@ class Architecture:
     def write_back(self):
         print("[WRITE BACK] Checking RS Units for write back...")
 
-        # Candidates for write back, collect all ready RS units
-        candidates = []
-        for tbl in self.all_rs_tables:
-            for u in list(tbl.table):  
-                if getattr(u, "cycles_left", None) == 0 and u.DST_value is not None:
-                    candidates.append((tbl, u))
+        # First handle the outputs from the reservation stations
+        for rs_table in self.all_rs_tables:
+            for rs_unit in rs_table.table:
+                print(f"[WRITE BACK] RS Unit: {rs_unit}")
+                # Check if execution is complete and result is ready
+                if rs_unit.cycles_left == 0 and rs_unit.DST_value is not None:
+                    # Write back result to ARF and update ROB
+                    result = rs_unit.DST_value
+                    #this needs to point to F1,F2,F3...etc
+                    dest_reg = rs_unit.ARF_tag
+                    CDB_res_reg = rs_unit.DST_tag
 
-        winner = None
-        if candidates:
-            winner = candidates[0]  # Simple arbitration: pick the first ready unit
+                    # Temporary print statement for debugging
+                    print(f"[WRITE BACK] Writing back result {result} to {dest_reg}")
+                    #
+                    # TODO : Implement CDB arbitration logic
+                    #
+                    self.CDB.append((dest_reg, result))
 
-        if winner:
-            rs_table, rs_unit = winner
-            print(f"[WRITE BACK] RS Unit selected for write back: {rs_unit}")
-
-            # Write back result to ARF and update ROB
-            result = rs_unit.DST_value
-            dest_reg = rs_unit.ARF_tag
-            CDB_res_reg = rs_unit.DST_tag
-
-            # Temporary print statement for debugging
-            print(f"[WRITE BACK] Writing back result {result} to {dest_reg}")
-            self.CDB.append((dest_reg, result))
-
-            # Remove RS entry
-            try:
-                rs_table.table.remove(rs_unit)
-                print(f"[WRITE BACK] Removed RS Unit {rs_unit} after write back.")
-            except ValueError:
-                print(f"[WRITE BACK] RS Unit {rs_unit} not found in table.")
+                    # Remove RS entry
+                    rs_table.table.remove(rs_unit)
+                    print(f"[WRITE BACK] Removed RS Unit {rs_unit} after write back.")
+                    break # Only handle one per requirements
 
         # Next, handle the Common Data Bus (CDB) updates
-
-        if self.CDB:
-            rob_tag, dest_reg, value = self.CDB.pop(0)
-            print(f"[WRITE BACK - CDB] Broadcasting tag={rob_tag}, dest={dest_reg}, value={value}")
-            self.ROB.update(rob_tag, value)
-
+        if len(self.CDB) > 0:
+            dest_reg, result = self.CDB.pop()
+            print(f"[WRITE BACK] CDB updating {dest_reg} with value {result}")
+            # writing to the ARF is done by the commit stage
             for rs_unit in self.fs_fp_add.table:
                 if rs_unit.tag1 == CDB_res_reg:
                     rs_unit.value1 = result
@@ -354,22 +349,19 @@ class Architecture:
                     rs_unit.value2 = result
                     print(f"[WRITE BACK] Updated RS Unit {rs_unit} value2 with {result}")
 
-                # Remove 1 cycle delay for write back, this will be different for each opcode
-                if "Add.d" in rs_unit.opcode or "Sub.d" in rs_unit.opcode:
-                    if rs_unit.value1 is not None and rs_unit.value2 is not None:
-                        print(f"[WRITE BACK] RS Unit {rs_unit} now has both operands ready: value1={rs_unit.value1}, value2={rs_unit.value2}")
-                        rs_unit.written_back = True
+                if rs_unit.value1 is not None and rs_unit.value2 is not None:
+                    print(f"[WRITE BACK] RS Unit {rs_unit} now has both operands ready: value1={rs_unit.value1}, value2={rs_unit.value2}")
+                    rs_unit.written_back = True
 
-
-            # # Update ROB entry
-            # # not updating
-            # # dest reg should be F1
-            # rob_entry = self.RAT.read(dest_reg)
-            # print("NOW PRINTING RELEVANT VALUES:")
-            # print(dest_reg)
-            # print(self.RAT.read(dest_reg))
-            # if rob_entry and rob_entry.startswith("ROB"):
-            #     self.ROB.update(rob_entry, result)
+            # Update ROB entry
+            # not updating
+            # dest reg should be F1
+            rob_entry = self.RAT.read(dest_reg)
+            print("NOW PRINTING RELEVANT VALUES:")
+            print(dest_reg)
+            print(self.RAT.read(dest_reg))
+            if rob_entry and rob_entry.startswith("ROB"):
+                self.ROB.update(rob_entry, result)
     
     # COMMIT --------------------------------------------------------------
     # TODO : Implement commit logic to use head and tail logic as per ROB design in class
@@ -381,7 +373,7 @@ class Architecture:
 
                 if rob_entry is not None:
                     alias, value, done = rob_entry
-                    # print(f"[COMMIT] Checking ROB entry {rob_entry_key}: alias={alias}, value={value}, done={done}")
+                    print(f"[COMMIT] Checking ROB entry {rob_entry_key}: alias={alias}, value={value}, done={done}")
 
                     # Extra cycle wait if instruction not done
                     if done == False and value is not None:
