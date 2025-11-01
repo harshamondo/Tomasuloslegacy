@@ -28,3 +28,8 @@ class ROB:
         if address in self.data:
             alias, _, done = self.data[address]
             self.data[address] = alias, value, done
+
+    def update_done(self, address, done):
+        if address in self.data:
+            alias, value, _ = self.data[address]
+            self.data[address] = alias, value, done

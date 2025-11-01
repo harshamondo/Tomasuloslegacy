@@ -4,7 +4,8 @@ import csv
 
 from modules.instruction import Instruction
 from modules.rob import ROB
-from modules.rs import RS_Unit, RS_Table, rs_fp_add_op
+from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op
+
 from modules.arf import ARF
 from modules.rat import RAT
 from modules.helper import arf_from_csv, is_arf, rat_from_csv
@@ -69,7 +70,7 @@ class Architecture:
         print(f"FP Adder RS Num: {self.FP_adder_rs_num}, FP Adder FU: {self.FP_adder_FU}")
         self.fs_fp_add = RS_Table(type="fs_fp_add", num_rs_units=self.FP_adder_rs_num, num_FU_units=self.FP_adder_FU, cycles_per_instruction=self.FP_adder_cycles)
         self.fs_fp_add.add_op( ("Add.d", rs_fp_add_op) )
-        self.fs_fp_add.add_op( ("Sub.d", rs_fp_add_op) )  # Placeholder, replace with actual subtraction function!!!
+        self.fs_fp_add.add_op( ("Sub.d", rs_fp_sub_op) )  # Placeholder, replace with actual subtraction function!!!
 
         # TODO : Initialize other RS_Tables for multiplier, integer adder, load/store with respective functions
         self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU)
@@ -222,21 +223,27 @@ class Architecture:
                 ):
                     print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2}")
                     rs_unit.cycles_left = rs_table.cycles_per_instruction
+
+                    if rs_unit.written_back == True:
+                        rs_unit.written_back = False
+                        rs_unit.cycles_left -= 1
+
                     print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
                     rs_table.use_fu_unit()
 
                 # Decrement remaining cycles if currently executing
-                elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 0:
+                elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 1:
                     rs_unit.cycles_left -= 1
                     print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
-
-                # Finish when execution cycles reach 0
+                elif rs_unit.cycles_left == 1:
+                    rs_unit.cycles_left -= 1
+                    print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
+                # complete execution if cycles left is 0
                 elif rs_unit.cycles_left == 0:
                     rs_unit.DST_value = rs_table.compute(rs_unit)
                     rs_unit.value1 = None
                     rs_unit.value2 = None
-                    print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for "
-                        f"destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
+                    # print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
 
         # Release all FU units at the end of execution phase since they are pipelined and get freed up for next cycle
         rs_table.release_all_fu_units()
@@ -288,6 +295,10 @@ class Architecture:
                     rs_unit.value2 = result
                     print(f"[WRITE BACK] Updated RS Unit {rs_unit} value2 with {result}")
 
+                if rs_unit.value1 is not None and rs_unit.value2 is not None:
+                    print(f"[WRITE BACK] RS Unit {rs_unit} now has both operands ready: value1={rs_unit.value1}, value2={rs_unit.value2}")
+                    rs_unit.written_back = True
+
             # Update ROB entry
             # not updating
             # dest reg should be F1
@@ -308,16 +319,22 @@ class Architecture:
 
                 if rob_entry is not None:
                     alias, value, done = rob_entry
+                    # print(f"[COMMIT] Checking ROB entry {rob_entry_key}: alias={alias}, value={value}, done={done}")
+
+                    # Extra cycle wait if instruction not done
                     if done == False and value is not None:
+                        print(f"[COMMIT] Waiting 1 cycle to commit {value} to {alias} from {rob_entry_key}")
+                        self.ROB.update_done(rob_entry_key, True)
+                        break
+                        
+                    if done == True:
                         print(f"[COMMIT] Committing {value} to {alias} from {rob_entry_key}")
-                        done = True
                         self.ARF.write(alias, value)
+
+                        # Update RAT to point back to ARF if it still points to this ROB entry
                         if self.RAT.read(alias) == rob_entry_key:
                             self.RAT.write(alias, "ARF" + str(int(alias[1:]) + 32))  
                         # Clear the ROB entry
                         self.ROB.clear(rob_entry_key)
                         # Only commit one instruction per cycle
-
-                        #need to repoint the RAT table to the ARF
-
                         break  

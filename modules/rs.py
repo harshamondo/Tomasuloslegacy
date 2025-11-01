@@ -22,6 +22,8 @@ class RS_Unit:
             self.reg2 = reg2
             self.ARF_tag = DST_tag
 
+            self.written_back = False
+
             self.RAT = RAT_object
             self.ARF = ARF_object
 
@@ -127,3 +129,6 @@ class RS_Table:
 # parameters: rs_unit - the RS_Unit containing the operands, immediates, etc.
 def rs_fp_add_op(self, rs_unit: RS_Unit):
       return rs_unit.value1 + rs_unit.value2
+
+def rs_fp_sub_op(self, rs_unit: RS_Unit):
+      return rs_unit.value1 - rs_unit.value2
