@@ -127,14 +127,16 @@ class RS_Table:
       def length(self):
             count = 0
             for rs_unit in self.table:
-                  if rs_unit.cycles_left is not None and rs_unit.cycles_left > 0:
+                  if rs_unit.cycles_left is None:
+                        count += 1
+                  elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 0:
                         count += 1
             return count
       
       def print_rs_without_intermediates(self):
             print(f"RS Table Type: {self.type}, Number of Units: {self.num_units}, Busy FU Units: {self.busy_FU_units}")
             for i, rs_unit in enumerate(self.table):
-                  if rs_unit.cycles_left is not None:
+                  if rs_unit.cycles_left is None:
                         print(f"[{i}] Opcode: {rs_unit.opcode}, DST_tag: {rs_unit.DST_tag}, tag1: {rs_unit.tag1}, tag2: {rs_unit.tag2}, value1: {rs_unit.value1}, value2: {rs_unit.value2}, cycles_left: {rs_unit.cycles_left}")
                   elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 0:
                         print(f"[{i}] Opcode: {rs_unit.opcode}, DST_tag: {rs_unit.DST_tag}, tag1: {rs_unit.tag1}, tag2: {rs_unit.tag2}, value1: {rs_unit.value1}, value2: {rs_unit.value2}, cycles_left: {rs_unit.cycles_left}")

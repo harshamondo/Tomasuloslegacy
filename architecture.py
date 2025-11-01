@@ -184,12 +184,43 @@ class Architecture:
         #add instructions into the RS if not full
         #think about how we are going to stall
         #ask prof if we need to have official states like fetch and decode since our instruction class already handles fetch+decode
-        current_instruction = self.fetch()
-        print(f"[ISSUE] int_adder_rs_num: {self.int_adder_rs_num}, fs_int_adder.table size: {self.fs_fp_add.length()}")
-        for rs_table in self.all_rs_tables:
-            rs_table.print_rs_without_intermediates()
+        current_instruction = None
+        if len(self.instruction_queue) != 0:
+            current_instruction = self.instruction_queue[0]
+            type_of_instr = current_instruction.opcode
+            # printing size of the all RS tables before checking for space
+            print(f"[ISSUE] RS Table Sizes before issue:")
+            print(f"[ISSUE] FP Adder RS Size: {self.fs_fp_add.length()}")
+            print(f"[ISSUE] Int Adder RS Size: {self.fs_int_adder.length()}")
+            print(f"[ISSUE] Multiplier RS Size: {self.fs_mult.length()}")
+            print(f"[ISSUE] Load/Store RS Size: {self.fs_LS.length()}")
+            # print what's in the RS tables
+            for rs_table in self.all_rs_tables:
+                print(f"[ISSUE] RS Table {rs_table.type} contents before issue:")
+                for rs_unit in rs_table.table:
+                    print(f"    {rs_unit}")
+
+            if (type_of_instr == "Add.d" or type_of_instr == "Sub.d"):
+                if self.fs_fp_add.length() >= self.FP_adder_rs_num:
+                    current_instruction = None
+            elif (type_of_instr == "Add" or type_of_instr == "Sub" or type_of_instr == "Addi"):
+                if self.fs_int_adder.length() >= self.int_adder_rs_num:
+                    current_instruction = None
+            elif (type_of_instr == "Mult.d"):
+                if self.fs_mult.length() >= self.multiplier_rs_num:
+                    current_instruction = None
+            elif (type_of_instr == "SD" or type_of_instr == "LD"):
+                if self.fs_LS.length() >= self.load_store_rs_num:
+                    current_instruction = None
+
         if current_instruction is not None:
+            current_instruction = self.fetch()
+            # DEBUG PRINTS
+            #print(f"[ISSUE] int_adder_rs_num: {self.int_adder_rs_num}, fs_int_adder.table size: {self.fs_fp_add.length()}")
+            for rs_table in self.all_rs_tables:
+                rs_table.print_rs_without_intermediates()
             print(f"[ISSUE] Issuing instruction: {current_instruction}")
+
             check = current_instruction.opcode
             # issued = False
             current_ROB = None
@@ -297,8 +328,8 @@ class Architecture:
                 rs_unit.DST_value = rs_table.compute(rs_unit)
                 print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
                 # could be buffered but we are just leaving this for write back stage to handle
-                rs_unit.value1 = None
-                rs_unit.value2 = None
+                # rs_unit.value1 = None
+                # rs_unit.value2 = None
                 # print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
 
         # Release all FU units at the end of execution phase since they are pipelined and get freed up for next cycle
@@ -338,6 +369,7 @@ class Architecture:
                     rs_table.table.remove(rs_unit)
                     print(f"[WRITE BACK] Removed RS Unit {rs_unit} after write back.")
                     break # Only handle one per requirements
+                break
 
         # Next, handle the Common Data Bus (CDB) updates
         if len(self.CDB) > 0:
@@ -373,7 +405,7 @@ class Architecture:
             print(f"[WRITE BACK] Completed write back for {arf_reg} with value {result}.")
             self.ROB.update(CDB_res_reg, result)
             print(f"[WRITE BACK] Updated ROB entry for {CDB_res_reg} with value {result}.")
-            
+
         print(f"[WRITE BACK] Current ROB state: {self.ROB}")
     
     # COMMIT --------------------------------------------------------------
