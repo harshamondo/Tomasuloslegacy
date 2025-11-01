@@ -1,0 +1,5 @@
+Add.d F1, F2, F3
+Add.d F2, F1, F3
+Mult.d F2, F3, F4
+Sub.d F3, F5, F6
+Add.d F3, F2, F8

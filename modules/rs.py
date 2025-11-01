@@ -124,6 +124,21 @@ class RS_Table:
             available = ", ".join(n for n, _ in self.op) or "<none>"
             raise KeyError(f"Unknown opcode '{op_name}'. Registered ops: [{available}]")
 
+      def length(self):
+            count = 0
+            for rs_unit in self.table:
+                  if rs_unit.cycles_left is not None and rs_unit.cycles_left > 0:
+                        count += 1
+            return count
+      
+      def print_rs_without_intermediates(self):
+            print(f"RS Table Type: {self.type}, Number of Units: {self.num_units}, Busy FU Units: {self.busy_FU_units}")
+            for i, rs_unit in enumerate(self.table):
+                  if rs_unit.cycles_left is not None:
+                        print(f"[{i}] Opcode: {rs_unit.opcode}, DST_tag: {rs_unit.DST_tag}, tag1: {rs_unit.tag1}, tag2: {rs_unit.tag2}, value1: {rs_unit.value1}, value2: {rs_unit.value2}, cycles_left: {rs_unit.cycles_left}")
+                  elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 0:
+                        print(f"[{i}] Opcode: {rs_unit.opcode}, DST_tag: {rs_unit.DST_tag}, tag1: {rs_unit.tag1}, tag2: {rs_unit.tag2}, value1: {rs_unit.value1}, value2: {rs_unit.value2}, cycles_left: {rs_unit.cycles_left}")
+
 # OPERATIONS used by the RS_Table compute method go here. They can use anything in the RS_Unit
 # Example operation: Floating Point Addition
 # parameters: rs_unit - the RS_Unit containing the operands, immediates, etc.

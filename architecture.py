@@ -147,7 +147,6 @@ class Architecture:
                         instructions.append((opcode, operands))
             return instructions
 
-
     def gen_instructions(self,instruction_list):
         # Fetches instructions from instruction_list, decodes them into Instruction objects, and puts them into the global instruction_queue.
         while instruction_list:
@@ -163,7 +162,6 @@ class Architecture:
                     opcode = parts[0]
                     operands = parts[1:]
                     self.instruction_queue.append(Instruction(opcode, operands))
-
 
     # ISSUE --------------------------------------------------------------
     def init_instr(self):
@@ -183,13 +181,13 @@ class Architecture:
              self.RAT.write("F" + str(i),"ARF" + str(i+32))
 
     def issue(self):
-        
-
         #add instructions into the RS if not full
         #think about how we are going to stall
         #ask prof if we need to have official states like fetch and decode since our instruction class already handles fetch+decode
         current_instruction = self.fetch()
-        
+        print(f"[ISSUE] int_adder_rs_num: {self.int_adder_rs_num}, fs_int_adder.table size: {self.fs_fp_add.length()}")
+        for rs_table in self.all_rs_tables:
+            rs_table.print_rs_without_intermediates()
         if current_instruction is not None:
             print(f"[ISSUE] Issuing instruction: {current_instruction}")
             check = current_instruction.opcode
@@ -204,23 +202,26 @@ class Architecture:
             #check for space in RS
             #have to add tables for mult, and ld/store
             
-            if (check == "Add.d" or check == "Sub.d") and len(self.fs_fp_add.table) < self.FP_adder_rs_num:
+            print(f"[ISSUE] Check: {check}")
+            if (check == "Add.d" or check == "Sub.d") and self.fs_fp_add.length() < self.FP_adder_rs_num:
                 self.fs_fp_add.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF,self.clock))
-            
-            elif (check == "Add" or check == "Sub" or check == "Addi") and len(self.fs_int_adder.table) < self.int_adder_rs_num:
-                
+
+            elif (check == "Add" or check == "Sub" or check == "Addi") and self.fs_int_adder.length() < self.int_adder_rs_num:
+                print("[ISSUE] ------")
                 if check == "Addi":
                     rs = RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.immediate,self.RAT,self.ARF)
                     # immediate value goes to value2 without tag needed
                     rs.value2 = int(current_instruction.immediate)
+                    print("[ISSUE] Added Addi RS Unit with immediate value:", rs.value2)
+                    print("[ISSUE] RS Unit details:", rs)
                     self.fs_int_adder.table.append(rs)
                 else:
                     self.fs_int_adder.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF))
 
-            elif (check == "Mult.d") and len(self.fs_mult.table) < self.multiplier_rs_num:
+            elif (check == "Mult.d") and self.fs_mult.length() < self.multiplier_rs_num:
                 self.fs_mult.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF))
-            
-            elif (check == "SD" or check == "LD") and len(self.fs_LS.table) < self.load_store_rs_num:
+
+            elif (check == "SD" or check == "LD") and self.fs_LS.length() < self.load_store_rs_num:
                 print("added ld")
                 self.fs_LS.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.offset, current_instruction.src1,self.RAT,self.ARF))
             else:
@@ -295,6 +296,7 @@ class Architecture:
             elif rs_unit.cycles_left == 0:
                 rs_unit.DST_value = rs_table.compute(rs_unit)
                 print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
+                # could be buffered but we are just leaving this for write back stage to handle
                 rs_unit.value1 = None
                 rs_unit.value2 = None
                 # print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
@@ -350,6 +352,7 @@ class Architecture:
                     rs_unit.value2 = result
                     print(f"[WRITE BACK] Updated RS Unit {rs_unit} value2 with {result}")
 
+                # Should be able to remove this
                 if rs_unit.value1 is not None and rs_unit.value2 is not None:
                     print(f"[WRITE BACK] RS Unit {rs_unit} now has both operands ready: value1={rs_unit.value1}, value2={rs_unit.value2}")
                     rs_unit.written_back = True
@@ -361,8 +364,12 @@ class Architecture:
             print("NOW PRINTING RELEVANT VALUES:")
             print(dest_reg)
             print(self.RAT.read(dest_reg))
+            # if rob_entry and rob_entry.startswith("ARF"):
+            #     print(f"[WRITE BACK] Destination {dest_reg} points to ARF entry {rob_entry}, no ROB update needed.")
+            #     self.ARF.write(dest_reg, result)
             if rob_entry and rob_entry.startswith("ROB"):
                 self.ROB.update(rob_entry, result)
+            
     
     # COMMIT --------------------------------------------------------------
     # TODO : Implement commit logic to use head and tail logic as per ROB design in class
