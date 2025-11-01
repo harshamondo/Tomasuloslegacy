@@ -45,7 +45,7 @@ class RS_Unit:
       
       def __str__(self):
             return (f"DST_tag={self.DST_tag}, DST_value={self.DST_value}, opcode={self.opcode}, "
-                  f"tag1={self.tag1}, tag2={self.tag2}, value1={self.value1}, value2={self.value2})")
+                  f"tag1={self.tag1}, tag2={self.tag2}, value1={self.value1}, value2={self.value2}), cycles_left={self.cycles_left}, cycle_issued={self.cycle_issued}, written_back={self.written_back}")
 
 # Reservation Station Table - holds multiple RS_Unit objects
 # Type indicates the type of functional unit it is associated with (e.g., Integer Adder, FP Adder, Multiplier, Load/Store)
@@ -143,4 +143,4 @@ def rs_int_sub_op(self, rs_unit: RS_Unit):
       return rs_unit.value1 - rs_unit.value2
 
 def rs_int_addi_op(self, rs_unit: RS_Unit):
-      return rs_unit.value1 + rs_unit.immediate_value
+      return rs_unit.value1 + rs_unit.value2

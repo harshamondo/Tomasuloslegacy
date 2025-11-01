@@ -31,7 +31,7 @@ def check_init():
     
     print("Initial ARF and RAT contents:")
     # print_ARF_RAT(loot)
-    total_cycles = 20
+    total_cycles = 25
 
     for i in range(1,total_cycles):
         print("----------------Issuing cycle number:", loot.clock)

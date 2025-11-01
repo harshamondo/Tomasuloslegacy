@@ -212,7 +212,7 @@ class Architecture:
                 if check == "Addi":
                     rs = RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.immediate,self.RAT,self.ARF)
                     # immediate value goes to value2 without tag needed
-                    rs.value2 = current_instruction.immediate
+                    rs.value2 = int(current_instruction.immediate)
                     self.fs_int_adder.table.append(rs)
                 else:
                     self.fs_int_adder.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF))
@@ -252,52 +252,52 @@ class Architecture:
         print(f"[EXECUTE] Parsing RS Table: {rs_table.type}")
         for rs_unit in rs_table.table:
             # Skip empty slots (if your RS uses opcode)
-            print(f"[DEBUG] RS Unit: {rs_unit}")
+
             # print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
-            if getattr(rs_unit, "opcode", None) is None:
-                continue
+            # if getattr(rs_unit, "opcode", None) is None:
+            #     continue
             # General execution logic for RS units
-            if rs_table.check_rs_full() is False:
-                # Start execution if operands ready, not already executing, and FU available
-                if (
-                    rs_unit.value1 is not None
-                    and rs_unit.value2 is not None
-                    and rs_unit.cycles_left is None
-                    # TODO : Test Pipelined CPU - check for available FU units
-                    and rs_table.busy_FU_units <= rs_table.num_FU_units 
-                ):
-                    print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2} for {rs_table.cycles_per_instruction} cycles.")
-                    rs_unit.cycles_left = rs_table.cycles_per_instruction
+            # if rs_table.check_rs_full() is False:
+            # Start execution if operands ready, not already executing, and FU available
+            if (
+                rs_unit.value1 is not None
+                and rs_unit.value2 is not None
+                and rs_unit.cycles_left is None
+                # TODO : Test Pipelined CPU - check for available FU units
+                and rs_table.busy_FU_units <= rs_table.num_FU_units 
+            ):
+                print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2} for {rs_table.cycles_per_instruction} cycles.")
+                rs_unit.cycles_left = rs_table.cycles_per_instruction
 
-                    if rs_unit.written_back == True:
-                        rs_unit.written_back = False
-                        rs_unit.cycles_left -= 1
-
-                    if rs_unit.cycles_left == 1:
-                        # rs_unit.cycles_left -= 1
-                        print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
-                        rs_unit.DST_value = rs_table.compute(rs_unit)
-                        print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
-                        rs_unit.value1 = None
-                        rs_unit.value2 = None
-
-                    print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
-                    rs_table.use_fu_unit()
-
-                # Decrement remaining cycles if currently executing
-                elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 1:
+                if rs_unit.written_back == True:
+                    rs_unit.written_back = False
                     rs_unit.cycles_left -= 1
-                    print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
-                elif rs_unit.cycles_left == 1:
-                    rs_unit.cycles_left -= 1
-                    print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
-                # complete execution if cycles left is 0
-                elif rs_unit.cycles_left == 0:
-                    rs_unit.DST_value = rs_table.compute(rs_unit)
-                    print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
-                    rs_unit.value1 = None
-                    rs_unit.value2 = None
-                    # print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
+
+                # if rs_unit.cycles_left == 1:
+                #     rs_unit.cycles_left -= 1
+                #     print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
+                #     # rs_unit.DST_value = rs_table.compute(rs_unit)
+                #     # print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
+                #     # rs_unit.value1 = None
+                #     # rs_unit.value2 = None
+
+                print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
+                rs_table.use_fu_unit()
+
+            # Decrement remaining cycles if currently executing
+            elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 1:
+                rs_unit.cycles_left -= 1
+                print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
+            elif rs_unit.cycles_left == 1:
+                rs_unit.cycles_left -= 1
+                print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
+            # complete execution if cycles left is 0
+            elif rs_unit.cycles_left == 0:
+                rs_unit.DST_value = rs_table.compute(rs_unit)
+                print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
+                rs_unit.value1 = None
+                rs_unit.value2 = None
+                # print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
 
         # Release all FU units at the end of execution phase since they are pipelined and get freed up for next cycle
         rs_table.release_all_fu_units()
@@ -314,6 +314,7 @@ class Architecture:
 
         # First handle the outputs from the reservation stations
         for rs_table in self.all_rs_tables:
+            print(f"[WRITE BACK] Processing RS Table: {rs_table.type}")
             for rs_unit in rs_table.table:
                 print(f"[WRITE BACK] RS Unit: {rs_unit}")
                 # Check if execution is complete and result is ready
