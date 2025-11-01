@@ -4,7 +4,7 @@ import csv
 
 from modules.instruction import Instruction
 from modules.rob import ROB
-from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op
+from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op, rs_fp_mul_op, rs_int_add_op, rs_int_sub_op, rs_int_addi_op
 
 from modules.arf import ARF
 from modules.rat import RAT
@@ -65,17 +65,51 @@ class Architecture:
                     self.FP_adder_rs_num = int(rs_field) if rs_field.isdigit() else self.FP_adder_rs_num
                     self.FP_adder_cycles = int(ex_field) if ex_field.isdigit() else self.FP_adder_cycles
                     self.FP_adder_mem_cycles = int(mem_field) if mem_field.isdigit() else self.FP_adder_mem_cycles
-                    self.FP_adder_FU = int(fu_field) if fu_field.isdigit() else self.FP_adder_FU             
+                    self.FP_adder_FU = int(fu_field) if fu_field.isdigit() else self.FP_adder_FU
 
-        print(f"FP Adder RS Num: {self.FP_adder_rs_num}, FP Adder FU: {self.FP_adder_FU}")
+                if re.search("Integer adder", type_name, re.IGNORECASE):
+                    self.int_adder_rs_num = int(rs_field) if rs_field.isdigit() else self.int_adder_rs_num
+                    self.int_adder_cycles = int(ex_field) if ex_field.isdigit() else self.int_adder_cycles
+                    self.int_adder_mem_cycles = int(mem_field) if mem_field.isdigit() else self.int_adder_mem_cycles
+                    self.int_adder_FU = int(fu_field) if fu_field.isdigit() else self.int_adder_FU
+            
+                if re.search("FP multiplier", type_name, re.IGNORECASE):
+                    self.multiplier_rs_num = int(rs_field) if rs_field.isdigit() else self.multiplier_rs_num
+                    self.multiplier_cycles = int(ex_field) if ex_field.isdigit() else self.multiplier_cycles
+                    self.multiplier_mem_cycles = int(mem_field) if mem_field.isdigit() else self.multiplier_mem_cycles
+                    self.multiplier_FU = int(fu_field) if fu_field.isdigit() else self.multiplier_FU
+
+                if re.search("Load/store unit", type_name, re.IGNORECASE):
+                    self.load_store_rs_num = int(rs_field) if rs_field.isdigit() else self.load_store_rs_num
+                    self.load_store_cycles = int(ex_field) if ex_field.isdigit() else self.load_store_cycles
+                    self.load_store_mem_cycles = int(mem_field) if mem_field.isdigit() else self.load_store_mem_cycles
+                    self.load_store_FU = int(fu_field) if fu_field.isdigit() else self.load_store_FU
+
+        print(f"FP Adder RS Num: {self.FP_adder_rs_num}, FP Adder FU: {self.FP_adder_FU}, Cycles: {self.FP_adder_cycles}, Mem Cycles: {self.FP_adder_mem_cycles}")
         self.fs_fp_add = RS_Table(type="fs_fp_add", num_rs_units=self.FP_adder_rs_num, num_FU_units=self.FP_adder_FU, cycles_per_instruction=self.FP_adder_cycles)
         self.fs_fp_add.add_op( ("Add.d", rs_fp_add_op) )
-        self.fs_fp_add.add_op( ("Sub.d", rs_fp_sub_op) )  # Placeholder, replace with actual subtraction function!!!
+        self.fs_fp_add.add_op( ("Sub.d", rs_fp_sub_op) )
 
         # TODO : Initialize other RS_Tables for multiplier, integer adder, load/store with respective functions
-        self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU)
-        self.fs_mult = RS_Table(type="fs_fp_mult", num_rs_units=self.multiplier_rs_num, num_FU_units=self.multiplier_FU)
-        self.fs_int_adder = RS_Table(type="fs_int_adder", num_rs_units=self.int_adder_rs_num, num_FU_units=self.int_adder_FU)
+        print(f"Load/Store RS Num: {self.load_store_rs_num}, Load/Store FU: {self.load_store_FU}, Cycles: {self.load_store_cycles}, Mem Cycles: {self.load_store_mem_cycles}")
+        self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU, cycles_per_instruction=self.load_store_cycles)
+
+        print(f"Multiplier RS Num: {self.multiplier_rs_num}, Multiplier FU: {self.multiplier_FU}, Cycles: {self.multiplier_cycles}, Mem Cycles: {self.multiplier_mem_cycles}")
+        self.fs_mult = RS_Table(type="fs_fp_mult", num_rs_units=self.multiplier_rs_num, num_FU_units=self.multiplier_FU, cycles_per_instruction=self.multiplier_cycles)
+        self.fs_mult.add_op( ("Mult.d", rs_fp_mul_op) )  # Placeholder, replace with actual multiplication function!!!
+
+        print(f"Integer Adder RS Num: {self.int_adder_rs_num}, Integer Adder FU: {self.int_adder_FU}, Cycles: {self.int_adder_cycles}, Mem Cycles: {self.int_adder_mem_cycles}")
+        self.fs_int_adder = RS_Table(type="fs_int_adder", num_rs_units=self.int_adder_rs_num, num_FU_units=self.int_adder_FU, cycles_per_instruction=self.int_adder_cycles)
+        self.fs_int_adder.add_op( ("Add", rs_int_add_op) )
+        self.fs_int_adder.add_op( ("Sub", rs_int_sub_op) )
+        self.fs_int_adder.add_op( ("Addi", rs_int_addi_op) )
+        
+        self.all_rs_tables = [
+            self.fs_fp_add,
+            self.fs_int_adder,
+            self.fs_mult,
+            self.fs_LS
+        ]
 
         #Initialize instruction register
         self.instruction_queue = deque()
@@ -113,7 +147,6 @@ class Architecture:
                         instructions.append((opcode, operands))
             return instructions
 
-
     def gen_instructions(self,instruction_list):
         # Fetches instructions from instruction_list, decodes them into Instruction objects, and puts them into the global instruction_queue.
         while instruction_list:
@@ -129,7 +162,6 @@ class Architecture:
                     opcode = parts[0]
                     operands = parts[1:]
                     self.instruction_queue.append(Instruction(opcode, operands))
-
 
     # ISSUE --------------------------------------------------------------
     def init_instr(self):
@@ -152,14 +184,46 @@ class Architecture:
         #add instructions into the RS if not full
         #think about how we are going to stall
         #ask prof if we need to have official states like fetch and decode since our instruction class already handles fetch+decode
-        current_instruction = self.fetch()
-        
+        current_instruction = None
+        if len(self.instruction_queue) != 0:
+            current_instruction = self.instruction_queue[0]
+            type_of_instr = current_instruction.opcode
+            # printing size of the all RS tables before checking for space
+            print(f"[ISSUE] RS Table Sizes before issue:")
+            print(f"[ISSUE] FP Adder RS Size: {self.fs_fp_add.length()}")
+            print(f"[ISSUE] Int Adder RS Size: {self.fs_int_adder.length()}")
+            print(f"[ISSUE] Multiplier RS Size: {self.fs_mult.length()}")
+            print(f"[ISSUE] Load/Store RS Size: {self.fs_LS.length()}")
+            # print what's in the RS tables
+            for rs_table in self.all_rs_tables:
+                print(f"[ISSUE] RS Table {rs_table.type} contents before issue:")
+                for rs_unit in rs_table.table:
+                    print(f"    {rs_unit}")
+
+            if (type_of_instr == "Add.d" or type_of_instr == "Sub.d"):
+                if self.fs_fp_add.length() >= self.FP_adder_rs_num:
+                    current_instruction = None
+            elif (type_of_instr == "Add" or type_of_instr == "Sub" or type_of_instr == "Addi"):
+                if self.fs_int_adder.length() >= self.int_adder_rs_num:
+                    current_instruction = None
+            elif (type_of_instr == "Mult.d"):
+                if self.fs_mult.length() >= self.multiplier_rs_num:
+                    current_instruction = None
+            elif (type_of_instr == "SD" or type_of_instr == "LD"):
+                if self.fs_LS.length() >= self.load_store_rs_num:
+                    current_instruction = None
+
         if current_instruction is not None:
-            print("[ISSUE] No instruction to issue this cycle.")
+            current_instruction = self.fetch()
+            # DEBUG PRINTS
+            #print(f"[ISSUE] int_adder_rs_num: {self.int_adder_rs_num}, fs_int_adder.table size: {self.fs_fp_add.length()}")
+            for rs_table in self.all_rs_tables:
+                rs_table.print_rs_without_intermediates()
+            print(f"[ISSUE] Issuing instruction: {current_instruction}")
+
             check = current_instruction.opcode
-            issued = False
+            # issued = False
             current_ROB = None
-    
                 
             #add to ROB and RAT regardless if we must wait for RS space
             current_ROB = "ROB" + str(self.ROB.getEntries()+1)
@@ -169,27 +233,38 @@ class Architecture:
             #check for space in RS
             #have to add tables for mult, and ld/store
             
-            if (check == "Add.d" or check == "Sub.d") and len(self.fs_fp_add.table) < self.FP_adder_rs_num:
+            print(f"[ISSUE] Check: {check}")
+            if (check == "Add.d" or check == "Sub.d") and self.fs_fp_add.length() < self.FP_adder_rs_num:
                 self.fs_fp_add.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF,self.clock))
-            
-            elif (check == "Add" or check == "Sub" or check == "Addi") and len(self.fs_int_adder.table) < self.int_adder_rs_num:
-                
+
+            elif (check == "Add" or check == "Sub" or check == "Addi") and self.fs_int_adder.length() < self.int_adder_rs_num:
+                print("[ISSUE] ------")
                 if check == "Addi":
-                    self.fs_int_adder.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.immediate,self.RAT,self.ARF))
+                    rs = RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.immediate,self.RAT,self.ARF)
+                    # immediate value goes to value2 without tag needed
+                    rs.value2 = int(current_instruction.immediate)
+                    print("[ISSUE] Added Addi RS Unit with immediate value:", rs.value2)
+                    print("[ISSUE] RS Unit details:", rs)
+                    self.fs_int_adder.table.append(rs)
                 else:
                     self.fs_int_adder.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF))
 
-            elif (check == "Mult.d") and len(self.fs_mult.table) < self.multiplier_rs_num:
+            elif (check == "Mult.d") and self.fs_mult.length() < self.multiplier_rs_num:
                 self.fs_mult.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF))
-            
-            elif (check == "SD" or check == "LD") and len(self.fs_LS.table) < self.load_store_rs_num:
+
+            elif (check == "SD" or check == "LD") and self.fs_LS.length() < self.load_store_rs_num:
                 print("added ld")
                 self.fs_LS.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.offset, current_instruction.src1,self.RAT,self.ARF))
             else:
                 #stall due to full RS
                 #if no conditions are satisified, it must mean the targeted RS is full
                 pass
-                
+
+            # print(f"[ISSUE] rs tables after issue:")
+            # print(f"[ISSUE] FP Adder RS: {[str(unit) for unit in self.fs_fp_add.table]}")
+            # print(f"[ISSUE] FP Multiplier RS: {[str(unit) for unit in self.fs_mult.table]}")
+            # print(f"[ISSUE] Integer Adder RS: {[str(unit) for unit in self.fs_int_adder.table]}")
+            # print(f"[ISSUE] Load/Store RS: {[str(unit) for unit in self.fs_LS.table]}")
 
     def fetch(self):
         if len(self.instruction_queue) == 0:
@@ -205,87 +280,101 @@ class Architecture:
     # Will simulate cycles needed for each functional unit
 
     # Execute helper functions
-    def parse_rs_table(self, rs_table=None):
+    def parse_rs_table(self, rs_table: RS_Table):
+        print(f"[EXECUTE] Parsing RS Table: {rs_table.type}")
         for rs_unit in rs_table.table:
             # Skip empty slots (if your RS uses opcode)
-            if getattr(rs_unit, "opcode", None) is None:
-                continue
 
+            # print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
+            # if getattr(rs_unit, "opcode", None) is None:
+            #     continue
             # General execution logic for RS units
-            if rs_table.check_rs_full() is False:
-                # Start execution if operands ready, not already executing, and FU available
-                if (
-                    rs_unit.value1 is not None
-                    and rs_unit.value2 is not None
-                    and rs_unit.cycles_left is None
-                    # TODO : Test Pipelined CPU - check for available FU units
-                    and rs_table.busy_FU_units <= rs_table.num_FU_units 
-                ):
-                    print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2}")
-                    rs_unit.cycles_left = rs_table.cycles_per_instruction
+            # if rs_table.check_rs_full() is False:
+            # Start execution if operands ready, not already executing, and FU available
+            if (
+                rs_unit.value1 is not None
+                and rs_unit.value2 is not None
+                and rs_unit.cycles_left is None
+                # TODO : Test Pipelined CPU - check for available FU units
+                and rs_table.busy_FU_units <= rs_table.num_FU_units 
+            ):
+                print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2} for {rs_table.cycles_per_instruction} cycles.")
+                rs_unit.cycles_left = rs_table.cycles_per_instruction
 
-                    if rs_unit.written_back == True:
-                        rs_unit.written_back = False
-                        rs_unit.cycles_left -= 1
-
-                    print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
-                    rs_table.use_fu_unit()
-
-                # Decrement remaining cycles if currently executing
-                elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 1:
+                if rs_unit.written_back == True:
+                    rs_unit.written_back = False
                     rs_unit.cycles_left -= 1
-                    print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
-                elif rs_unit.cycles_left == 1:
-                    rs_unit.cycles_left -= 1
-                    print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
-                # complete execution if cycles left is 0
-                elif rs_unit.cycles_left == 0:
-                    rs_unit.DST_value = rs_table.compute(rs_unit)
-                    rs_unit.value1 = None
-                    rs_unit.value2 = None
-                    # print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
+
+                # if rs_unit.cycles_left == 1:
+                #     rs_unit.cycles_left -= 1
+                #     print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
+                #     # rs_unit.DST_value = rs_table.compute(rs_unit)
+                #     # print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
+                #     # rs_unit.value1 = None
+                #     # rs_unit.value2 = None
+
+                print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
+                rs_table.use_fu_unit()
+
+            # Decrement remaining cycles if currently executing
+            elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 1:
+                rs_unit.cycles_left -= 1
+                print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
+            elif rs_unit.cycles_left == 1:
+                rs_unit.cycles_left -= 1
+                print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
+            # complete execution if cycles left is 0
+            elif rs_unit.cycles_left == 0:
+                rs_unit.DST_value = rs_table.compute(rs_unit)
+                print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
+                # could be buffered but we are just leaving this for write back stage to handle
+                # rs_unit.value1 = None
+                # rs_unit.value2 = None
+                # print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
 
         # Release all FU units at the end of execution phase since they are pipelined and get freed up for next cycle
         rs_table.release_all_fu_units()
 
     def execute(self):
         # Execute logic for Floating Point Adder/Subtracter RS
-        self.parse_rs_table(self.fs_fp_add)
+        for rs_table in self.all_rs_tables:
+            self.parse_rs_table(rs_table)
 
-        #
-        # TODO: Add execution logic for other functional units
-        #
-
+    # WRITE BACK --------------------------------------------------------------
+    # Helper function for write back
     def write_back(self):
         print("[WRITE BACK] Checking RS Units for write back...")
 
         # First handle the outputs from the reservation stations
-        for rs_unit in self.fs_fp_add.table:
-            print(f"[WRITE BACK] RS Unit: {rs_unit}")
-            # Check if execution is complete and result is ready
-            if rs_unit.cycles_left == 0 and rs_unit.DST_value is not None:
-                # Write back result to ARF and update ROB
-                result = rs_unit.DST_value
-                #this needs to point to F1,F2,F3...etc
-                dest_reg = rs_unit.ARF_tag
-                CDB_res_reg = rs_unit.DST_tag
+        for rs_table in self.all_rs_tables:
+            print(f"[WRITE BACK] Processing RS Table: {rs_table.type}")
+            for rs_unit in rs_table.table:
+                print(f"[WRITE BACK] RS Unit: {rs_unit}")
+                # Check if execution is complete and result is ready
+                if rs_unit.cycles_left == 0 and rs_unit.DST_value is not None:
+                    # Write back result to ARF and update ROB
+                    result = rs_unit.DST_value
+                    #this needs to point to F1,F2,F3...etc
+                    arf_reg = rs_unit.ARF_tag
+                    CDB_res_reg = rs_unit.DST_tag
 
-                # Temporary print statement for debugging
-                print(f"[WRITE BACK] Writing back result {result} to {dest_reg}")
-                #
-                # TODO : Implement CDB arbitration logic
-                #
-                self.CDB.append((dest_reg, result))
+                    # Temporary print statement for debugging
+                    print(f"[WRITE BACK] Writing back result {result} to {arf_reg}, getting ready to update ROB entry for {CDB_res_reg}")
+                    #
+                    # TODO : Implement CDB arbitration logic
+                    #
+                    self.CDB.append((CDB_res_reg, arf_reg, result))
 
-                # Remove RS entry
-                self.fs_fp_add.table.remove(rs_unit)
-                print(f"[WRITE BACK] Removed RS Unit {rs_unit} after write back.")
-                break # Only handle one per requirements
+                    # Remove RS entry
+                    rs_table.table.remove(rs_unit)
+                    print(f"[WRITE BACK] Removed RS Unit {rs_unit} after write back.")
+                    break # Only handle one per requirements
+                break
 
         # Next, handle the Common Data Bus (CDB) updates
         if len(self.CDB) > 0:
-            dest_reg, result = self.CDB.pop()
-            print(f"[WRITE BACK] CDB updating {dest_reg} with value {result}")
+            CDB_res_reg, arf_reg, result = self.CDB.pop()
+            print(f"[WRITE BACK] CDB updating {arf_reg} with value {result}")
             # writing to the ARF is done by the commit stage
             for rs_unit in self.fs_fp_add.table:
                 if rs_unit.tag1 == CDB_res_reg:
@@ -295,6 +384,7 @@ class Architecture:
                     rs_unit.value2 = result
                     print(f"[WRITE BACK] Updated RS Unit {rs_unit} value2 with {result}")
 
+                # Should be able to remove this
                 if rs_unit.value1 is not None and rs_unit.value2 is not None:
                     print(f"[WRITE BACK] RS Unit {rs_unit} now has both operands ready: value1={rs_unit.value1}, value2={rs_unit.value2}")
                     rs_unit.written_back = True
@@ -302,12 +392,21 @@ class Architecture:
             # Update ROB entry
             # not updating
             # dest reg should be F1
-            rob_entry = self.RAT.read(dest_reg)
-            print("NOW PRINTING RELEVANT VALUES:")
-            print(dest_reg)
-            print(self.RAT.read(dest_reg))
-            if rob_entry and rob_entry.startswith("ROB"):
-                self.ROB.update(rob_entry, result)
+            # rob_entry = self.RAT.read(arf_reg)
+            # print("NOW PRINTING RELEVANT VALUES:")
+            # print(arf_reg)
+            # print(self.RAT.read(arf_reg))
+            # # if rob_entry and rob_entry.startswith("ARF"):
+            # #     print(f"[WRITE BACK] Destination {dest_reg} points to ARF entry {rob_entry}, no ROB update needed.")
+            # #     self.ARF.write(dest_reg, result)
+            # if rob_entry and rob_entry.startswith("ROB"):
+            #     self.ROB.update(rob_entry, result)
+
+            print(f"[WRITE BACK] Completed write back for {arf_reg} with value {result}.")
+            self.ROB.update(CDB_res_reg, result)
+            print(f"[WRITE BACK] Updated ROB entry for {CDB_res_reg} with value {result}.")
+
+        print(f"[WRITE BACK] Current ROB state: {self.ROB}")
     
     # COMMIT --------------------------------------------------------------
     # TODO : Implement commit logic to use head and tail logic as per ROB design in class
@@ -319,7 +418,7 @@ class Architecture:
 
                 if rob_entry is not None:
                     alias, value, done = rob_entry
-                    # print(f"[COMMIT] Checking ROB entry {rob_entry_key}: alias={alias}, value={value}, done={done}")
+                    print(f"[COMMIT] Checking ROB entry {rob_entry_key}: alias={alias}, value={value}, done={done}")
 
                     # Extra cycle wait if instruction not done
                     if done == False and value is not None:

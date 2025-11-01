@@ -45,7 +45,7 @@ class RS_Unit:
       
       def __str__(self):
             return (f"DST_tag={self.DST_tag}, DST_value={self.DST_value}, opcode={self.opcode}, "
-                  f"tag1={self.tag1}, tag2={self.tag2}, value1={self.value1}, value2={self.value2})")
+                  f"tag1={self.tag1}, tag2={self.tag2}, value1={self.value1}, value2={self.value2}), cycles_left={self.cycles_left}, cycle_issued={self.cycle_issued}, written_back={self.written_back}")
 
 # Reservation Station Table - holds multiple RS_Unit objects
 # Type indicates the type of functional unit it is associated with (e.g., Integer Adder, FP Adder, Multiplier, Load/Store)
@@ -124,6 +124,23 @@ class RS_Table:
             available = ", ".join(n for n, _ in self.op) or "<none>"
             raise KeyError(f"Unknown opcode '{op_name}'. Registered ops: [{available}]")
 
+      def length(self):
+            count = 0
+            for rs_unit in self.table:
+                  if rs_unit.cycles_left is None:
+                        count += 1
+                  elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 0:
+                        count += 1
+            return count
+      
+      def print_rs_without_intermediates(self):
+            print(f"RS Table Type: {self.type}, Number of Units: {self.num_units}, Busy FU Units: {self.busy_FU_units}")
+            for i, rs_unit in enumerate(self.table):
+                  if rs_unit.cycles_left is None:
+                        print(f"[{i}] Opcode: {rs_unit.opcode}, DST_tag: {rs_unit.DST_tag}, tag1: {rs_unit.tag1}, tag2: {rs_unit.tag2}, value1: {rs_unit.value1}, value2: {rs_unit.value2}, cycles_left: {rs_unit.cycles_left}")
+                  elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 0:
+                        print(f"[{i}] Opcode: {rs_unit.opcode}, DST_tag: {rs_unit.DST_tag}, tag1: {rs_unit.tag1}, tag2: {rs_unit.tag2}, value1: {rs_unit.value1}, value2: {rs_unit.value2}, cycles_left: {rs_unit.cycles_left}")
+
 # OPERATIONS used by the RS_Table compute method go here. They can use anything in the RS_Unit
 # Example operation: Floating Point Addition
 # parameters: rs_unit - the RS_Unit containing the operands, immediates, etc.
@@ -132,3 +149,15 @@ def rs_fp_add_op(self, rs_unit: RS_Unit):
 
 def rs_fp_sub_op(self, rs_unit: RS_Unit):
       return rs_unit.value1 - rs_unit.value2
+
+def rs_fp_mul_op(self, rs_unit: RS_Unit):
+      return rs_unit.value1 * rs_unit.value2
+
+def rs_int_add_op(self, rs_unit: RS_Unit):
+      return rs_unit.value1 + rs_unit.value2
+
+def rs_int_sub_op(self, rs_unit: RS_Unit):
+      return rs_unit.value1 - rs_unit.value2
+
+def rs_int_addi_op(self, rs_unit: RS_Unit):
+      return rs_unit.value1 + rs_unit.value2
