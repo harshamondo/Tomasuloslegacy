@@ -305,14 +305,6 @@ class Architecture:
                     rs_unit.written_back = False
                     rs_unit.cycles_left -= 1
 
-                # if rs_unit.cycles_left == 1:
-                #     rs_unit.cycles_left -= 1
-                #     print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
-                #     # rs_unit.DST_value = rs_table.compute(rs_unit)
-                #     # print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
-                #     # rs_unit.value1 = None
-                #     # rs_unit.value2 = None
-
                 print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
                 rs_table.use_fu_unit()
 
@@ -390,18 +382,6 @@ class Architecture:
                     rs_unit.written_back = True
 
             # Update ROB entry
-            # not updating
-            # dest reg should be F1
-            # rob_entry = self.RAT.read(arf_reg)
-            # print("NOW PRINTING RELEVANT VALUES:")
-            # print(arf_reg)
-            # print(self.RAT.read(arf_reg))
-            # # if rob_entry and rob_entry.startswith("ARF"):
-            # #     print(f"[WRITE BACK] Destination {dest_reg} points to ARF entry {rob_entry}, no ROB update needed.")
-            # #     self.ARF.write(dest_reg, result)
-            # if rob_entry and rob_entry.startswith("ROB"):
-            #     self.ROB.update(rob_entry, result)
-
             print(f"[WRITE BACK] Completed write back for {arf_reg} with value {result}.")
             self.ROB.update(CDB_res_reg, result)
             print(f"[WRITE BACK] Updated ROB entry for {CDB_res_reg} with value {result}.")

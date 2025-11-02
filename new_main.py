@@ -5,6 +5,9 @@
 
 # Importing necessary classes from other modules -- these are modules you can work on.
 from architecture import Architecture
+from pathlib import Path
+from logger import setup_logging, StreamToLogger
+import logging, sys
 
 # Helper : Function to print ARF and RAT contents
 def print_ARF_RAT(arch):
@@ -26,6 +29,20 @@ def print_ROB(arch):
 
 # Helper : Function to run a test simulation
 def check_init():
+    # initialize handlers (console + run.log)
+    setup_logging("run.log")
+
+    # existing print() calls to also go into logging
+    sys.stdout = StreamToLogger(logging.getLogger("stdout"), logging.INFO)
+    sys.stderr = StreamToLogger(logging.getLogger("stderr"), logging.ERROR)
+
+    print("logger initialized")  
+
+    try:
+        Path("run.log").unlink()
+    except FileNotFoundError:
+        pass
+
     loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
     #loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
     #loot = Architecture("instruction_sets/instructions.txt")
