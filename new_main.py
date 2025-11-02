@@ -29,6 +29,11 @@ def print_ROB(arch):
 
 # Helper : Function to run a test simulation
 def check_init():
+    try:
+        Path("run.log").unlink()
+    except FileNotFoundError:
+        pass
+
     # initialize handlers (console + run.log)
     setup_logging("run.log")
 
@@ -37,11 +42,6 @@ def check_init():
     sys.stderr = StreamToLogger(logging.getLogger("stderr"), logging.ERROR)
 
     print("logger initialized")  
-
-    try:
-        Path("run.log").unlink()
-    except FileNotFoundError:
-        pass
 
     loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
     #loot = Architecture("instruction_sets/straight_line_case_no_load.txt")

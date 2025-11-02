@@ -8,7 +8,7 @@ from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op, rs_fp_mul_
 
 from modules.arf import ARF
 from modules.rat import RAT
-from modules.helper import arf_from_csv, is_arf, rat_from_csv
+from modules.helper import arf_from_csv, is_arf, rat_from_csv, init_ARF_RAT
 from pathlib import Path
 from default_generator.rat_arf_gen import print_file_arf, print_file_rat
 
@@ -115,12 +115,15 @@ class Architecture:
         self.instruction_queue = deque()
         self.init_instr()
 
+        #Setup PC + branch instruction map
+
         #initialize RAT and ARF
         #include ways to update ARF based on parameters
         #registers 0-31 and R and 32-64 are F
         self.ARF = ARF()
         self.RAT = RAT()
 
+        # Pull from the ARF and RAT .csv
         self.ARF = arf_from_csv("arf.csv")
         self.RAT = rat_from_csv("rat.csv")
 
@@ -128,9 +131,16 @@ class Architecture:
         #ROB should be a queue
         self.ROB = ROB()
 
+        # Queue for the CDB
         self.CDB = deque()
 
-    # Helper functions for ISSUE
+    # Helper functions to initialize the architecture
+
+    # Helper functions to get the functions from the txt file and get them read for issue
+    def init_instr(self):
+            instructions_list = self.parse()
+            self.gen_instructions(instructions_list)
+
     # Fetch instructions from a file
     def parse(self):
             # Reads instructions from a file and returns them as a list of (opcode, operands) tuples.
@@ -146,7 +156,7 @@ class Architecture:
                         operands = parts[1:]
                         instructions.append((opcode, operands))
             return instructions
-
+    
     def gen_instructions(self,instruction_list):
         # Fetches instructions from instruction_list, decodes them into Instruction objects, and puts them into the global instruction_queue.
         while instruction_list:
@@ -164,21 +174,11 @@ class Architecture:
                     self.instruction_queue.append(Instruction(opcode, operands))
 
     # ISSUE --------------------------------------------------------------
-    def init_instr(self):
-        instructions_list = self.parse()
-        self.gen_instructions(instructions_list)
-
-          #debug
-          #print(len(self.FP_adder_RS))
-    def init_ARF_RAT(self):
-        #add logic here to initialize ARF to values
-        #add logic here to initialize ARF to values
-        for i in range(1,33):
-             self.ARF.write("R" + str(i),0)
-             self.RAT.write("R" + str(i),"ARF" + str(i))
-        for i in range(1,33):
-             self.ARF.write("F" + str(i),0)
-             self.RAT.write("F" + str(i),"ARF" + str(i+32))
+    def fetch(self):
+        if len(self.instruction_queue) == 0:
+            return None
+        current_instruction = self.instruction_queue.popleft()
+        return current_instruction
 
     def issue(self):
         #add instructions into the RS if not full
@@ -266,15 +266,6 @@ class Architecture:
             # print(f"[ISSUE] Integer Adder RS: {[str(unit) for unit in self.fs_int_adder.table]}")
             # print(f"[ISSUE] Load/Store RS: {[str(unit) for unit in self.fs_LS.table]}")
 
-    def fetch(self):
-        if len(self.instruction_queue) == 0:
-            return None
-        current_instruction = self.instruction_queue.popleft()
-        return current_instruction
-    
-    def decode(self):
-        pass
-        
     # EXECUTE --------------------------------------------------------------
     # Checks the reservation stations for ready instructions, if they are ready, executes them
     # Will simulate cycles needed for each functional unit
