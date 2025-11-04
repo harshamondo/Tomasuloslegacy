@@ -15,7 +15,9 @@ class RS_Unit:
             self.tag2 = None
             self.value1 = None
             self.value2 = None
-            # self.offset = offset
+
+            # Branch offset
+            self.branch_offset = None
             # self.immediate = immediate
             self.cycles_left = None
             self.cycle_issued = cycles_issued
@@ -42,14 +44,19 @@ class RS_Unit:
                 self.tag2 = self.RAT.read(self.reg2)
             elif self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ARF":
                 self.value2 = self.ARF.read(self.reg2)
-        
+      
+      def set_branch_offset(self, branch_offset):
+            self.branch_offset = branch_offset
+
       def print_RS(self):
            print("Now printing RS entry:")
            print("[",self.opcode,"]","[",self.DST_tag,"]","[",self.tag1,"]","[",self.tag2,"]","[",self.value1,"]","[",self.value2,"]")
       
       def __str__(self):
             return (f"DST_tag={self.DST_tag}, DST_value={self.DST_value}, opcode={self.opcode}, "
-                  f"tag1={self.tag1}, tag2={self.tag2}, value1={self.value1}, value2={self.value2}), cycles_left={self.cycles_left}, cycle_issued={self.cycle_issued}, written_back={self.written_back}")
+                  f"tag1={self.tag1}, tag2={self.tag2}, value1={self.value1}, value2={self.value2}),"
+                  f"cycles_left={self.cycles_left}, cycle_issued={self.cycle_issued}, written_back={self.written_back}"
+                  f", branch_offset={self.branch_offset}")
 
 # Reservation Station Table - holds multiple RS_Unit objects
 # Type indicates the type of functional unit it is associated with (e.g., Integer Adder, FP Adder, Multiplier, Load/Store)
@@ -71,6 +78,9 @@ class RS_Table:
             #store/load RS are queues
             if self.type == "fs_fp_ls":
                   self.table = deque()
+
+      def set_branch_offset(self, index = 0, offset = 0):
+            self.table[index].set_branch_offset(offset)
 
       def check_rs_full(self):
             return len(self.table) >= self.num_units
@@ -165,3 +175,6 @@ def rs_int_sub_op(self, rs_unit: RS_Unit):
 
 def rs_int_addi_op(self, rs_unit: RS_Unit):
       return rs_unit.value1 + rs_unit.value2
+
+def rs_branch(self, rs_unit: RS_Unit):
+      return rs_unit.branch_offset

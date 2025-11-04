@@ -4,7 +4,7 @@ import csv
 
 from modules.instruction import Instruction
 from modules.rob import ROB
-from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op, rs_fp_mul_op, rs_int_add_op, rs_int_sub_op, rs_int_addi_op
+from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op, rs_fp_mul_op, rs_int_add_op, rs_int_sub_op, rs_int_addi_op, rs_branch
 
 from modules.arf import ARF
 from modules.rat import RAT
@@ -104,11 +104,17 @@ class Architecture:
         self.fs_int_adder.add_op( ("Sub", rs_int_sub_op) )
         self.fs_int_adder.add_op( ("Addi", rs_int_addi_op) )
         
+        # Execution step is only 1 step, there should not be extra rs_units and there isn't really functional units for this branch
+        self.fs_branch = RS_Table(type="fs_branch", num_rs_units=1, num_FU_units=1, cycles_per_instruction=1)
+        self.fs_branch.add_op( ("Bne", rs_branch))
+        self.fs_branch.add_op( ("Beq", rs_branch))
+
         self.all_rs_tables = [
             self.fs_fp_add,
             self.fs_int_adder,
             self.fs_mult,
-            self.fs_LS
+            self.fs_LS,
+            self.fs_branch
         ]
 
         #Initialize instruction register
@@ -143,6 +149,9 @@ class Architecture:
         # Queue for the CDB
         self.CDB = deque()
 
+        # Halt
+        self.halt = False
+
     # Helper functions to initialize the architecture
 
     # Helper functions to get the functions from the txt file and get them read for issue
@@ -167,20 +176,34 @@ class Architecture:
             return instructions
     
     def gen_instructions(self,instruction_list):
-        # Fetches instructions from instruction_list, decodes them into Instruction objects, and puts them into the global instruction_queue.
+            # Fetches instructions, decodes to Instruction objects, and enqueues them.
         while instruction_list:
             instr = instruction_list.pop(0)
-            # If already tuple (opcode, operands), just use it
+
             if isinstance(instr, tuple):
                 opcode, operands = instr
-                self.instruction_queue.append(Instruction(opcode, operands))
             elif isinstance(instr, str):
-                # Fallback: decode string
                 parts = instr.replace(',', '').split()
-                if len(parts) > 0:
-                    opcode = parts[0]
-                    operands = parts[1:]
-                    self.instruction_queue.append(Instruction(opcode, operands))
+                if not parts:
+                    continue
+                opcode, operands = parts[0], parts[1:]
+            else:
+                continue
+
+            # Build the Instruction first
+            instr = Instruction(opcode, operands)
+
+            # Branch remap: Beq/Bnz dest=None, src1=op0, src2=op1, offset=op2, immediate=None
+            if opcode.lower() in ("beq", "bnz"):
+                if len(operands) != 3:
+                    raise ValueError(f"{opcode} expects 3 operands, got {len(operands)}: {operands}")
+                instr.dest = None
+                instr.src1 = operands[0]
+                instr.src2 = operands[1]
+                instr.offset = operands[2]
+                instr.immediate = None
+
+            self.instruction_queue.append(instr)
 
     # ISSUE --------------------------------------------------------------
     def fetch(self):
@@ -195,6 +218,7 @@ class Architecture:
         #ask prof if we need to have official states like fetch and decode since our instruction class already handles fetch+decode
         current_instruction = None
         if len(self.instruction_queue) != 0:
+            # peak the current instruction
             current_instruction = self.instruction_queue[0]
             type_of_instr = current_instruction.opcode
             # printing size of the all RS tables before checking for space
@@ -209,7 +233,7 @@ class Architecture:
                 for rs_unit in rs_table.table:
                     print(f"    {rs_unit}")
 
-            # Checks if the reservations stations after full!
+            # Checks if the reservations stations after full! No instruction 
             if (type_of_instr == "Add.d" or type_of_instr == "Sub.d"):
                 if self.fs_fp_add.length() >= self.FP_adder_rs_num:
                     current_instruction = None
@@ -222,8 +246,12 @@ class Architecture:
             elif (type_of_instr == "SD" or type_of_instr == "LD"):
                 if self.fs_LS.length() >= self.load_store_rs_num:
                     current_instruction = None
+            elif (type_of_instr == "NOP"):
+                self.fetch()
+                current_instruction = None
 
-        if current_instruction is not None:
+        # NOP is untested
+        if current_instruction is not None and self.halt is not True:
             current_instruction = self.fetch()
             # DEBUG PRINTS
             #print(f"[ISSUE] int_adder_rs_num: {self.int_adder_rs_num}, fs_int_adder.table size: {self.fs_fp_add.length()}")
@@ -252,8 +280,8 @@ class Architecture:
                     rs = RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.immediate, self.RAT, self.ARF)
                     # immediate value goes to value2 without tag needed
                     rs.value2 = int(current_instruction.immediate)
-                    print("[ISSUE] Added Addi RS Unit with immediate value:", rs.value2)
-                    print("[ISSUE] RS Unit details:", rs)
+                    # print("[ISSUE] Added Addi RS Unit with immediate value:", rs.value2)
+                    # print("[ISSUE] RS Unit details:", rs)
                     self.fs_int_adder.table.append(rs)
                 else:
                     self.fs_int_adder.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
@@ -261,9 +289,19 @@ class Architecture:
             elif (check == "Mult.d") and self.fs_mult.length() < self.multiplier_rs_num:
                 self.fs_mult.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
 
-            elif (check == "SD" or check == "LD") and self.fs_LS.length() < self.load_store_rs_num:
-                print("added ld")
+            elif (check == "Sd" or check == "Ld") and self.fs_LS.length() < self.load_store_rs_num:
+                print("[ISSUE] Added ld or sd")
                 self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF))
+            elif (check == "Beq" or check == "Bne"):
+                # Ignore the next fetch until the Bne is done
+                halt = True
+
+                # Branch predication will be here
+                self.fs_branch.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
+                self.fs_branch.set_branch_offset(0, current_instruction.offset)
+
+                # branch does not stack at the moment!!
+                print(f"[DEBUG] Testing if branch gets to here {self.fs_branch}")
             else:
                 #stall due to full RS
                 #if no conditions are satisified, it must mean the targeted RS is full
@@ -282,6 +320,8 @@ class Architecture:
         print(f"[EXECUTE] Parsing RS Table: {rs_table.type}")
         for rs_unit in rs_table.table:
             # Skip empty slots (if your RS uses opcode)
+            print(f"[EXECUTE] RS Table {rs_table.type}")
+            print(f"[EXECUTE] RS Unit {rs_unit}")
 
             # print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
             # if getattr(rs_unit, "opcode", None) is None:
@@ -364,20 +404,24 @@ class Architecture:
         # Next, handle the Common Data Bus (CDB) updates
         if len(self.CDB) > 0:
             CDB_res_reg, arf_reg, result = self.CDB.pop()
-            print(f"[WRITE BACK] CDB updating {arf_reg} with value {result}")
+            print(f"[WRITE BACK] CDB updating ARF:{arf_reg} and CDB_res:{CDB_res_reg} with value {result}")
             # writing to the ARF is done by the commit stage
-            for rs_unit in self.fs_fp_add.table:
-                if rs_unit.tag1 == CDB_res_reg:
-                    rs_unit.value1 = result
-                    print(f"[WRITE BACK] Updated RS Unit {rs_unit} value1 with {result}")
-                if rs_unit.tag2 == CDB_res_reg:
-                    rs_unit.value2 = result
-                    print(f"[WRITE BACK] Updated RS Unit {rs_unit} value2 with {result}")
+            # check all the tables
+            for rs_table in self.all_rs_tables:
+                for rs_unit in rs_table.table:
+                    if rs_unit.tag1 == CDB_res_reg:
+                        print(f"[WRITE BACK] Found one in {rs_table.type}")
+                        rs_unit.value1 = result
+                        print(f"[WRITE BACK] Updated RS Unit {rs_unit} value1 with {result}")
+                    if rs_unit.tag2 == CDB_res_reg:
+                        print(f"[WRITE BACK] Found one in {rs_table.type}")
+                        rs_unit.value2 = result
+                        print(f"[WRITE BACK] Updated RS Unit {rs_unit} value2 with {result}")
 
-                # Should be able to remove this
-                if rs_unit.value1 is not None and rs_unit.value2 is not None:
-                    print(f"[WRITE BACK] RS Unit {rs_unit} now has both operands ready: value1={rs_unit.value1}, value2={rs_unit.value2}")
-                    rs_unit.written_back = True
+                    # Should be able to remove this
+                    if rs_unit.value1 is not None and rs_unit.value2 is not None:
+                        print(f"[WRITE BACK] RS Unit {rs_unit} now has both operands ready: value1={rs_unit.value1}, value2={rs_unit.value2}")
+                        rs_unit.written_back = True
 
             # Update ROB entry
             print(f"[WRITE BACK] Completed write back for {arf_reg} with value {result}.")
