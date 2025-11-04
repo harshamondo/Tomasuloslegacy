@@ -377,29 +377,34 @@ class Architecture:
 
         # First handle the outputs from the reservation stations
         for rs_table in self.all_rs_tables:
-            print(f"[WRITE BACK] Processing RS Table: {rs_table.type}")
-            for rs_unit in rs_table.table:
-                print(f"[WRITE BACK] RS Unit: {rs_unit}")
-                # Check if execution is complete and result is ready
-                if rs_unit.cycles_left == 0 and rs_unit.DST_value is not None:
-                    # Write back result to ARF and update ROB
-                    result = rs_unit.DST_value
-                    #this needs to point to F1,F2,F3...etc
-                    arf_reg = rs_unit.ARF_tag
-                    CDB_res_reg = rs_unit.DST_tag
+            if rs_table.type == "fs_branch":
+                print(f"[WRITE BACK] Processing RS Table: {rs_table.type}")
+                self.PC = rs_table[0].rs_branch
+                print(f"[WRITE BACK] New PC: {self.PC}")
+            else:
+                print(f"[WRITE BACK] Processing RS Table: {rs_table.type}")
+                for rs_unit in rs_table.table:
+                    print(f"[WRITE BACK] RS Unit: {rs_unit}")
+                    # Check if execution is complete and result is ready
+                    if rs_unit.cycles_left == 0 and rs_unit.DST_value is not None:
+                        # Write back result to ARF and update ROB
+                        result = rs_unit.DST_value
+                        #this needs to point to F1,F2,F3...etc
+                        arf_reg = rs_unit.ARF_tag
+                        CDB_res_reg = rs_unit.DST_tag
 
-                    # Temporary print statement for debugging
-                    print(f"[WRITE BACK] Writing back result {result} to {arf_reg}, getting ready to update ROB entry for {CDB_res_reg}")
-                    #
-                    # TODO : Implement CDB arbitration logic
-                    #
-                    self.CDB.append((CDB_res_reg, arf_reg, result))
+                        # Temporary print statement for debugging
+                        print(f"[WRITE BACK] Writing back result {result} to {arf_reg}, getting ready to update ROB entry for {CDB_res_reg}")
+                        #
+                        # TODO : Implement CDB arbitration logic
+                        #
+                        self.CDB.append((CDB_res_reg, arf_reg, result))
 
-                    # Remove RS entry
-                    rs_table.table.remove(rs_unit)
-                    print(f"[WRITE BACK] Removed RS Unit {rs_unit} after write back.")
-                    break # Only handle one per requirements
-                break
+                        # Remove RS entry
+                        rs_table.table.remove(rs_unit)
+                        print(f"[WRITE BACK] Removed RS Unit {rs_unit} after write back.")
+                        break # Only handle one per requirements
+                    break
 
         # Next, handle the Common Data Bus (CDB) updates
         if len(self.CDB) > 0:
