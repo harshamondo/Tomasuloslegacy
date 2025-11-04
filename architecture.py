@@ -116,6 +116,18 @@ class Architecture:
         self.init_instr()
 
         #Setup PC + branch instruction map
+        # Go through the instruction q 
+
+
+        #Setup PC + branch instruction map
+        self.instr_addresses = []
+        for index, instruction in enumerate(self.instruction_queue):
+        # We are starting the PC at 0x0 to begin. Each address is 0x4 off of the base
+            pc = 0x0 + index * 0x4
+            self.instr_addresses.append((pc, instruction))
+
+        for pc, instruction in self.instr_addresses:
+            print(f"[INIT] PC=0x{pc:04X} Instruction={instruction}")
 
         #initialize RAT and ARF
         #include ways to update ARF based on parameters
@@ -226,45 +238,41 @@ class Architecture:
             current_ROB = None
                 
             #add to ROB and RAT regardless if we must wait for RS space
+            #TODO  the register rename doesn't seem to account for the size of the ROB, absolutely needs to be fixed!
+            #TODO  we write to the ROBX and the search to see if the value exists. this is poor implementation
             current_ROB = "ROB" + str(self.ROB.getEntries()+1)
-            self.ROB.write(current_ROB,current_instruction.dest,None,False)
-            self.RAT.write(current_instruction.dest,current_ROB)
 
             #check for space in RS
             #have to add tables for mult, and ld/store
-            
             print(f"[ISSUE] Check: {check}")
             if (check == "Add.d" or check == "Sub.d") and self.fs_fp_add.length() < self.FP_adder_rs_num:
-                self.fs_fp_add.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF,self.clock))
+                self.fs_fp_add.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
 
             elif (check == "Add" or check == "Sub" or check == "Addi") and self.fs_int_adder.length() < self.int_adder_rs_num:
                 print("[ISSUE] ------")
                 if check == "Addi":
-                    rs = RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.immediate,self.RAT,self.ARF)
+                    rs = RS_Unit(current_instruction.dest, current_instruction.opcode, current_instruction.src1, current_instruction.immediate, self.RAT, self.ARF)
                     # immediate value goes to value2 without tag needed
                     rs.value2 = int(current_instruction.immediate)
                     print("[ISSUE] Added Addi RS Unit with immediate value:", rs.value2)
                     print("[ISSUE] RS Unit details:", rs)
                     self.fs_int_adder.table.append(rs)
                 else:
-                    self.fs_int_adder.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF))
+                    self.fs_int_adder.table.append(RS_Unit(current_instruction.dest, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
 
             elif (check == "Mult.d") and self.fs_mult.length() < self.multiplier_rs_num:
-                self.fs_mult.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF))
+                self.fs_mult.table.append(RS_Unit(current_instruction.dest, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
 
             elif (check == "SD" or check == "LD") and self.fs_LS.length() < self.load_store_rs_num:
                 print("added ld")
-                self.fs_LS.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.offset, current_instruction.src1,self.RAT,self.ARF))
+                self.fs_LS.table.append(RS_Unit(current_instruction.dest, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF))
             else:
                 #stall due to full RS
                 #if no conditions are satisified, it must mean the targeted RS is full
                 pass
 
-            # print(f"[ISSUE] rs tables after issue:")
-            # print(f"[ISSUE] FP Adder RS: {[str(unit) for unit in self.fs_fp_add.table]}")
-            # print(f"[ISSUE] FP Multiplier RS: {[str(unit) for unit in self.fs_mult.table]}")
-            # print(f"[ISSUE] Integer Adder RS: {[str(unit) for unit in self.fs_int_adder.table]}")
-            # print(f"[ISSUE] Load/Store RS: {[str(unit) for unit in self.fs_LS.table]}")
+            self.ROB.write(current_ROB,current_instruction.dest, None, False)
+            self.RAT.write(current_instruction.dest, current_ROB)
 
     # EXECUTE --------------------------------------------------------------
     # Checks the reservation stations for ready instructions, if they are ready, executes them

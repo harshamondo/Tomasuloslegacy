@@ -9,12 +9,14 @@ from typing import Callable, Any
 # status means the value is ready for execute
 from collections import deque
 class RS_Unit:
-      def __init__(self,DST_tag = None, opcode = None, reg1 = None, reg2 = None, RAT_object = None, ARF_object = None, cycles_issued = None):
+      def __init__(self, DST_tag = None, opcode = None, reg1 = None, reg2 = None, RAT_object = None, ARF_object = None, cycles_issued = None):
             self.opcode = opcode
             self.tag1 = None
             self.tag2 = None
             self.value1 = None
             self.value2 = None
+            # self.offset = offset
+            # self.immediate = immediate
             self.cycles_left = None
             self.cycle_issued = cycles_issued
             self.DST_value = None
@@ -27,7 +29,9 @@ class RS_Unit:
             self.RAT = RAT_object
             self.ARF = ARF_object
 
-            self.DST_tag = RAT_object.read(DST_tag)
+            # We should just assign the value? No need to read
+            #self.DST_tag = RAT_object.read(DST_tag)
+            self.DST_tag = DST_tag
 
             if self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ROB":
                 self.tag1 = self.RAT.read(self.reg1)
