@@ -117,9 +117,6 @@ class Architecture:
 
         #Setup PC + branch instruction map
         # Go through the instruction q 
-
-
-        #Setup PC + branch instruction map
         self.instr_addresses = []
         for index, instruction in enumerate(self.instruction_queue):
         # We are starting the PC at 0x0 to begin. Each address is 0x4 off of the base
@@ -212,6 +209,7 @@ class Architecture:
                 for rs_unit in rs_table.table:
                     print(f"    {rs_unit}")
 
+            # Checks if the reservations stations after full!
             if (type_of_instr == "Add.d" or type_of_instr == "Sub.d"):
                 if self.fs_fp_add.length() >= self.FP_adder_rs_num:
                     current_instruction = None
@@ -239,7 +237,7 @@ class Architecture:
                 
             #add to ROB and RAT regardless if we must wait for RS space
             #TODO  the register rename doesn't seem to account for the size of the ROB, absolutely needs to be fixed!
-            #TODO  we write to the ROBX and the search to see if the value exists. this is poor implementation
+            #TODO  we write to the ROB(X) and the search to see if the value exists. this is poor implementation
             current_ROB = "ROB" + str(self.ROB.getEntries()+1)
 
             #check for space in RS
@@ -251,26 +249,27 @@ class Architecture:
             elif (check == "Add" or check == "Sub" or check == "Addi") and self.fs_int_adder.length() < self.int_adder_rs_num:
                 print("[ISSUE] ------")
                 if check == "Addi":
-                    rs = RS_Unit(current_instruction.dest, current_instruction.opcode, current_instruction.src1, current_instruction.immediate, self.RAT, self.ARF)
+                    rs = RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.immediate, self.RAT, self.ARF)
                     # immediate value goes to value2 without tag needed
                     rs.value2 = int(current_instruction.immediate)
                     print("[ISSUE] Added Addi RS Unit with immediate value:", rs.value2)
                     print("[ISSUE] RS Unit details:", rs)
                     self.fs_int_adder.table.append(rs)
                 else:
-                    self.fs_int_adder.table.append(RS_Unit(current_instruction.dest, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
+                    self.fs_int_adder.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
 
             elif (check == "Mult.d") and self.fs_mult.length() < self.multiplier_rs_num:
-                self.fs_mult.table.append(RS_Unit(current_instruction.dest, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
+                self.fs_mult.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
 
             elif (check == "SD" or check == "LD") and self.fs_LS.length() < self.load_store_rs_num:
                 print("added ld")
-                self.fs_LS.table.append(RS_Unit(current_instruction.dest, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF))
+                self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF))
             else:
                 #stall due to full RS
                 #if no conditions are satisified, it must mean the targeted RS is full
                 pass
 
+            # We will also be read naming but we shouldn't read until we read from the right registers
             self.ROB.write(current_ROB,current_instruction.dest, None, False)
             self.RAT.write(current_instruction.dest, current_ROB)
 
@@ -403,7 +402,6 @@ class Architecture:
                     if done == False and value is not None:
                         print(f"[COMMIT] Waiting 1 cycle to commit {value} to {alias} from {rob_entry_key}")
                         self.ROB.update_done(rob_entry_key, True)
-                        break
                         
                     if done == True:
                         print(f"[COMMIT] Committing {value} to {alias} from {rob_entry_key}")
