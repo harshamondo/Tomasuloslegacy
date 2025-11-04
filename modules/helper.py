@@ -1,6 +1,7 @@
 import csv, re
 from modules.rat import RAT
 from modules.arf import ARF
+from modules.instruction import Instruction
 
 def _get_alias_str(alias_obj):
     if isinstance(alias_obj, str):
@@ -57,3 +58,14 @@ def arf_from_csv(path: str) -> ARF:
                     raise ValueError(f"Bad value '{value_str}'. Expected an integer.")
                 arf.write(reg, value)
     return arf
+
+# Helper functions for ISSUE
+def init_ARF_RAT(self):
+        #add logic here to initialize ARF to values
+        #add logic here to initialize ARF to values
+        for i in range(1,33):
+             self.ARF.write("R" + str(i),0)
+             self.RAT.write("R" + str(i),"ARF" + str(i))
+        for i in range(1,33):
+             self.ARF.write("F" + str(i),0)
+             self.RAT.write("F" + str(i),"ARF" + str(i+32))

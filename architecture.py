@@ -8,7 +8,7 @@ from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op, rs_fp_mul_
 
 from modules.arf import ARF
 from modules.rat import RAT
-from modules.helper import arf_from_csv, is_arf, rat_from_csv
+from modules.helper import arf_from_csv, is_arf, rat_from_csv, init_ARF_RAT
 from pathlib import Path
 from default_generator.rat_arf_gen import print_file_arf, print_file_rat
 
@@ -115,12 +115,24 @@ class Architecture:
         self.instruction_queue = deque()
         self.init_instr()
 
+        #Setup PC + branch instruction map
+        # Go through the instruction q 
+        self.instr_addresses = []
+        for index, instruction in enumerate(self.instruction_queue):
+        # We are starting the PC at 0x0 to begin. Each address is 0x4 off of the base
+            pc = 0x0 + index * 0x4
+            self.instr_addresses.append((pc, instruction))
+
+        for pc, instruction in self.instr_addresses:
+            print(f"[INIT] PC=0x{pc:04X} Instruction={instruction}")
+
         #initialize RAT and ARF
         #include ways to update ARF based on parameters
         #registers 0-31 and R and 32-64 are F
         self.ARF = ARF()
         self.RAT = RAT()
 
+        # Pull from the ARF and RAT .csv
         self.ARF = arf_from_csv("arf.csv")
         self.RAT = rat_from_csv("rat.csv")
 
@@ -128,9 +140,16 @@ class Architecture:
         #ROB should be a queue
         self.ROB = ROB()
 
+        # Queue for the CDB
         self.CDB = deque()
 
-    # Helper functions for ISSUE
+    # Helper functions to initialize the architecture
+
+    # Helper functions to get the functions from the txt file and get them read for issue
+    def init_instr(self):
+            instructions_list = self.parse()
+            self.gen_instructions(instructions_list)
+
     # Fetch instructions from a file
     def parse(self):
             # Reads instructions from a file and returns them as a list of (opcode, operands) tuples.
@@ -146,7 +165,7 @@ class Architecture:
                         operands = parts[1:]
                         instructions.append((opcode, operands))
             return instructions
-
+    
     def gen_instructions(self,instruction_list):
         # Fetches instructions from instruction_list, decodes them into Instruction objects, and puts them into the global instruction_queue.
         while instruction_list:
@@ -164,21 +183,11 @@ class Architecture:
                     self.instruction_queue.append(Instruction(opcode, operands))
 
     # ISSUE --------------------------------------------------------------
-    def init_instr(self):
-        instructions_list = self.parse()
-        self.gen_instructions(instructions_list)
-
-          #debug
-          #print(len(self.FP_adder_RS))
-    def init_ARF_RAT(self):
-        #add logic here to initialize ARF to values
-        #add logic here to initialize ARF to values
-        for i in range(1,33):
-             self.ARF.write("R" + str(i),0)
-             self.RAT.write("R" + str(i),"ARF" + str(i))
-        for i in range(1,33):
-             self.ARF.write("F" + str(i),0)
-             self.RAT.write("F" + str(i),"ARF" + str(i+32))
+    def fetch(self):
+        if len(self.instruction_queue) == 0:
+            return None
+        current_instruction = self.instruction_queue.popleft()
+        return current_instruction
 
     def issue(self):
         #add instructions into the RS if not full
@@ -200,6 +209,7 @@ class Architecture:
                 for rs_unit in rs_table.table:
                     print(f"    {rs_unit}")
 
+            # Checks if the reservations stations after full!
             if (type_of_instr == "Add.d" or type_of_instr == "Sub.d"):
                 if self.fs_fp_add.length() >= self.FP_adder_rs_num:
                     current_instruction = None
@@ -226,55 +236,43 @@ class Architecture:
             current_ROB = None
                 
             #add to ROB and RAT regardless if we must wait for RS space
+            #TODO  the register rename doesn't seem to account for the size of the ROB, absolutely needs to be fixed!
+            #TODO  we write to the ROB(X) and the search to see if the value exists. this is poor implementation
             current_ROB = "ROB" + str(self.ROB.getEntries()+1)
-            self.ROB.write(current_ROB,current_instruction.dest,None,False)
-            self.RAT.write(current_instruction.dest,current_ROB)
 
             #check for space in RS
             #have to add tables for mult, and ld/store
-            
             print(f"[ISSUE] Check: {check}")
             if (check == "Add.d" or check == "Sub.d") and self.fs_fp_add.length() < self.FP_adder_rs_num:
-                self.fs_fp_add.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF,self.clock))
+                self.fs_fp_add.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
 
             elif (check == "Add" or check == "Sub" or check == "Addi") and self.fs_int_adder.length() < self.int_adder_rs_num:
                 print("[ISSUE] ------")
                 if check == "Addi":
-                    rs = RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.immediate,self.RAT,self.ARF)
+                    rs = RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.immediate, self.RAT, self.ARF)
                     # immediate value goes to value2 without tag needed
                     rs.value2 = int(current_instruction.immediate)
                     print("[ISSUE] Added Addi RS Unit with immediate value:", rs.value2)
                     print("[ISSUE] RS Unit details:", rs)
                     self.fs_int_adder.table.append(rs)
                 else:
-                    self.fs_int_adder.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF))
+                    self.fs_int_adder.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
 
             elif (check == "Mult.d") and self.fs_mult.length() < self.multiplier_rs_num:
-                self.fs_mult.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.src1,current_instruction.src2,self.RAT,self.ARF))
+                self.fs_mult.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
 
             elif (check == "SD" or check == "LD") and self.fs_LS.length() < self.load_store_rs_num:
                 print("added ld")
-                self.fs_LS.table.append(RS_Unit(current_instruction.dest,current_instruction.opcode,current_instruction.offset, current_instruction.src1,self.RAT,self.ARF))
+                self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF))
             else:
                 #stall due to full RS
                 #if no conditions are satisified, it must mean the targeted RS is full
                 pass
 
-            # print(f"[ISSUE] rs tables after issue:")
-            # print(f"[ISSUE] FP Adder RS: {[str(unit) for unit in self.fs_fp_add.table]}")
-            # print(f"[ISSUE] FP Multiplier RS: {[str(unit) for unit in self.fs_mult.table]}")
-            # print(f"[ISSUE] Integer Adder RS: {[str(unit) for unit in self.fs_int_adder.table]}")
-            # print(f"[ISSUE] Load/Store RS: {[str(unit) for unit in self.fs_LS.table]}")
+            # We will also be read naming but we shouldn't read until we read from the right registers
+            self.ROB.write(current_ROB,current_instruction.dest, None, False)
+            self.RAT.write(current_instruction.dest, current_ROB)
 
-    def fetch(self):
-        if len(self.instruction_queue) == 0:
-            return None
-        current_instruction = self.instruction_queue.popleft()
-        return current_instruction
-    
-    def decode(self):
-        pass
-        
     # EXECUTE --------------------------------------------------------------
     # Checks the reservation stations for ready instructions, if they are ready, executes them
     # Will simulate cycles needed for each functional unit
@@ -304,14 +302,6 @@ class Architecture:
                 if rs_unit.written_back == True:
                     rs_unit.written_back = False
                     rs_unit.cycles_left -= 1
-
-                # if rs_unit.cycles_left == 1:
-                #     rs_unit.cycles_left -= 1
-                #     print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
-                #     # rs_unit.DST_value = rs_table.compute(rs_unit)
-                #     # print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
-                #     # rs_unit.value1 = None
-                #     # rs_unit.value2 = None
 
                 print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
                 rs_table.use_fu_unit()
@@ -390,18 +380,6 @@ class Architecture:
                     rs_unit.written_back = True
 
             # Update ROB entry
-            # not updating
-            # dest reg should be F1
-            # rob_entry = self.RAT.read(arf_reg)
-            # print("NOW PRINTING RELEVANT VALUES:")
-            # print(arf_reg)
-            # print(self.RAT.read(arf_reg))
-            # # if rob_entry and rob_entry.startswith("ARF"):
-            # #     print(f"[WRITE BACK] Destination {dest_reg} points to ARF entry {rob_entry}, no ROB update needed.")
-            # #     self.ARF.write(dest_reg, result)
-            # if rob_entry and rob_entry.startswith("ROB"):
-            #     self.ROB.update(rob_entry, result)
-
             print(f"[WRITE BACK] Completed write back for {arf_reg} with value {result}.")
             self.ROB.update(CDB_res_reg, result)
             print(f"[WRITE BACK] Updated ROB entry for {CDB_res_reg} with value {result}.")
@@ -424,7 +402,6 @@ class Architecture:
                     if done == False and value is not None:
                         print(f"[COMMIT] Waiting 1 cycle to commit {value} to {alias} from {rob_entry_key}")
                         self.ROB.update_done(rob_entry_key, True)
-                        break
                         
                     if done == True:
                         print(f"[COMMIT] Committing {value} to {alias} from {rob_entry_key}")

@@ -20,6 +20,16 @@ class ROB:
     
     def getEntries(self):
         return self.entries
+    
+    def getNextFreeEntry(self):
+        if self.is_full():
+            return None
+        i = self.tail
+        for _ in range(self.max_entries):
+            if i not in self.data:  # free slot
+                return i
+            i = (i + 1) % self.max_entries
+        return None
 
     def __str__(self):
         return f"ROB_entry(data={self.data})"
