@@ -79,6 +79,9 @@ class RS_Table:
             if self.type == "fs_fp_ls":
                   self.table = deque()
 
+      def __getitem__(self, idx):
+            return self.table[idx]
+
       def set_branch_offset(self, index = 0, offset = 0):
             self.table[index].set_branch_offset(offset)
 
@@ -176,5 +179,8 @@ def rs_int_sub_op(self, rs_unit: RS_Unit):
 def rs_int_addi_op(self, rs_unit: RS_Unit):
       return rs_unit.value1 + rs_unit.value2
 
-def rs_branch(self, rs_unit: RS_Unit):
-      return rs_unit.branch_offset
+def rs_branch_bne(self, rs_unit: RS_Unit):
+      return rs_unit.value1 != rs_unit.value2
+
+def rs_branch_beq(self, rs_unit: RS_Unit):
+      return rs_unit.value1 == rs_unit.value2
