@@ -1,14 +1,10 @@
 def print_timing_table(instructions):
-    """
-    Prints the timing results for all instructions in a formatted table.
-    The instruction list should be the master list of Instruction objects,
-    which contain the issue_cycle, execute_start_cycle, etc.
-    """
+
     if not instructions:
         print("\nNo instructions to display timing for.")
         return
 
-    # Column headers for the timing table
+    # Column headers
     headers = ["Instruction", "Issue", "Execute Start", "Execute End", "Write Back", "Commit"]
     
     # Calculate initial column widths based on headers
@@ -19,10 +15,8 @@ def print_timing_table(instructions):
     for instr in instructions:
         # Construct the instruction string (e.g., Add.d F1, F2, F3)
         try:
-             # This format handles the general case for ALU/LOAD/STORE instructions
              instr_str = f"{instr.opcode} {', '.join(instr.operands)}"
         except TypeError:
-             # Fallback if operands is None
              instr_str = f"{instr.opcode}"
 
         # Collect cycle data, using '-' for uncompleted stages

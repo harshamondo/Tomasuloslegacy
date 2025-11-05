@@ -13,6 +13,15 @@ class Instruction:
 		self.offset = None
 		self.immediate = None
 
+		# Extra Params: Timing and tracking attributes
+		self.rob_tag = None
+		self.issue_cycle = None
+		self.execute_start_cycle = None
+		self.execute_end_cycle = None
+		self.write_back_cycle = None
+		self.commit_cycle = None
+		
+
 		# Parse operands for specific opcodes
 		if opcode is not None and operands is not None:
 			op = opcode.lower()
@@ -41,9 +50,12 @@ class Instruction:
 
 	# String representation of the Instruction
 	def __str__(self):
+		# Include timing in string representation for robust debugging
+		timing_str = f"[I:{self.issue_cycle or '-'}|EX:{self.execute_start_cycle or '-'}-{self.execute_end_cycle or '-'}|WB:{self.write_back_cycle or '-'}|C:{self.commit_cycle or '-'}]"
 		return (f"Instruction(opcode={self.opcode}, operands={self.operands}, "
 				f"dest={self.dest}, src1={self.src1}, src2={self.src2}, "
-				f"offset={self.offset}, immediate={self.immediate})")
+				f"offset={self.offset}, immediate={self.immediate}, ROB:{self.rob_tag}) "
+				f"{timing_str}")
 
 	# Destructor for Instruction class
 	def __del__(self):

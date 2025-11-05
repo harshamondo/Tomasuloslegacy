@@ -5,6 +5,7 @@
 
 # Importing necessary classes from other modules -- these are modules you can work on.
 from architecture import Architecture
+from modules.print import print_timing_table 
 
 # Helper : Function to print ARF and RAT contents
 def print_ARF_RAT(arch):
@@ -26,26 +27,42 @@ def print_ROB(arch):
 
 # Helper : Function to run a test simulation
 def check_init():
-    loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
-    #loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
-    #loot = Architecture("instruction_sets/instructions.txt")
     
-    print("Initial ARF and RAT contents:")
-    # print_ARF_RAT(loot)
+    loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt") 
+    # loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
+    # loot = Architecture("instruction_sets/instructions.txt")
+    
+    # Increased total cycles for a safe maximum limit
     total_cycles = 30
 
     for i in range(1,total_cycles):
         print("----------------Issuing cycle number:", loot.clock)
-        loot.issue()
-        loot.execute()
-        loot.write_back()
+        
+        # Calling the functions in reversed  order: commit --> WB --> Execute --> Issue
+        #If you guys can make some changes in each of the functions then then the order can be reversed
         loot.commit()
+        loot.write_back() 
+        loot.execute()
+        loot.issue()
+        
         loot.clock += 1
         print("--------------------------------------------------")
+        
+        # Stop simulation if all instructions have committed
+        if (
+            all(instr.commit_cycle is not None for instr in loot.instructions_in_flight) 
+            and loot.instruction_pointer >= len(loot.instructions_in_flight) 
+            and loot.ROB.getEntries() == 0
+        ):
+            print(f"All instructions committed after {loot.clock - 1} cycles. Stopping simulation.")
+            break
 
-    print(f"Final ARF and RAT contents after {total_cycles} issue/execute cycles:")
+    print(f"Final ARF and RAT contents after {loot.clock - 1} cycles:")
     print_ARF_RAT(loot)
     print_ROB(loot)
+    
+    # Call the print function with the list of Instruction objects
+    print_timing_table(loot.instructions_in_flight) 
 
 # Don't use this, use the correct __name__ guard below
 def main():
