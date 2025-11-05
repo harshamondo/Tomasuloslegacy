@@ -43,17 +43,19 @@ def check_init():
 
     print("logger initialized")  
 
-    #loot = Architecture("instruction_sets/branch_test.txt")
-    loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
+    loot = Architecture("instruction_sets/branch_test.txt")
+    #loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
     #loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
     #loot = Architecture("instruction_sets/instructions.txt")
     
     print("Initial ARF and RAT contents:")
     # print_ARF_RAT(loot)
-    total_cycles = 30
+    total_cycles = 20
 
+    print(f"Current PC: {loot.PC}")
     for i in range(1,total_cycles):
         print("----------------Issuing cycle number:", loot.clock)
+        print(f"Current PC: 0x{loot.PC}")
         loot.issue()
         loot.execute()
         loot.write_back()
