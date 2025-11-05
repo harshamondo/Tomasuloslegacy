@@ -21,20 +21,20 @@ class ROB:
         # self.entries -= 1
     
     def peek(self):
-        # Return (address, (alias, value, done)) for the oldest entry, or (None, None) if empty."""
+        # Return (address, (alias, value, done)) for the oldest entry or (None, None) if empty
         if not self.data:
             return (None, None)
         k = next(iter(self.data))
         return (k, self.data[k])
 
     def pop(self):
-        # Remove and return (address, (alias, value, done)) for the oldest entry, or (None, None)."""
+        # Remove and return (address, (alias, value, done)) for the oldest entry or (None, None)
         if not self.data:
             return (None, None)
         k, v = self.data.popitem(last=False)  # pop head
         return (k, v)
 
-        # Optional sugar to peek values like self.ROB[0]
+        # peek values like self.ROB[0]
     def __getitem__(self, idx):
         if idx == 0:
             _, triple = self.peek()
