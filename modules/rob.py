@@ -12,12 +12,42 @@ class ROB:
     # Write to the ROB entry
     def write(self, address, alias, value, done):
         self.entries+=1
+        if self.entries > self.max_entries:
+            self.entries = 0
         self.data[address] = alias, value, done
 
     def clear(self,address):
         self.data.pop(address, None)
-        self.entries -= 1
+        # self.entries -= 1
     
+    def peek(self):
+        # Return (address, (alias, value, done)) for the oldest entry or (None, None) if empty
+        if not self.data:
+            return (None, None)
+        k = next(iter(self.data))
+        return (k, self.data[k])
+
+    def pop(self):
+        # Remove and return (address, (alias, value, done)) for the oldest entry or (None, None)
+        if not self.data:
+            return (None, None)
+        k, v = self.data.popitem(last=False)  # pop head
+        return (k, v)
+
+        # peek values like self.ROB[0]
+    def __getitem__(self, idx):
+        if idx == 0:
+            _, triple = self.peek()
+            return (None, None, None) if triple is None else triple
+        raise TypeError("Use index 0 to peek head, or call .peek() / .pop() / .read(address).")
+
+    def find_by_alias(self, alias):
+        # Return the address key for the given alias
+        for addr, (a, _, _) in self.data.items():
+            if a == alias:
+                return addr
+        return None
+
     def getEntries(self):
         return self.entries
     
