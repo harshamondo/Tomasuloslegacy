@@ -339,11 +339,11 @@ class Architecture:
 
     # Execute helper functions
     def parse_rs_table(self, rs_table: RS_Table):
-        print(f"[EXECUTE] Parsing RS Table: {rs_table.type}")
+        # print(f"[EXECUTE] Parsing RS Table: {rs_table.type}")
         for rs_unit in rs_table.table:
             # Skip empty slots (if your RS uses opcode)
             print(f"[EXECUTE] RS Table {rs_table.type}")
-            print(f"[EXECUTE] RS Unit {rs_unit}")
+            #print(f"[EXECUTE] RS Unit {rs_unit}")
 
             # print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
             # if getattr(rs_unit, "opcode", None) is None:
@@ -477,7 +477,7 @@ class Architecture:
         if self.ROB.getEntries() > 0:
             # Peak the front
             addr, (alias, value, done) = self.ROB.peek()
-            print(f"[COMMIT] Checking ROB entry {addr}: alias={alias}, value={value}, done={done}")
+            print(f"[COMMIT] Checking ROB entry {addr} and clearing from ROB: alias={alias}, value={value}, done={done}")
             if done == True:
                 addr = self.ROB.find_by_alias(alias)
                 print(f"[COMMIT] Committing {value} to {alias} from {addr}")
@@ -490,31 +490,15 @@ class Architecture:
                 self.ROB.clear(addr)
                 # Only commit one instruction per cycle
 
-            if value is not None:
-                print(f"[COMMIT] Committing {value} to {alias} from {addr}")
-                self.ROB.update_done(addr, True)
-
-            # for i in range(1, self.ROB.max_entries + 1):
-            #     rob_entry_key = "ROB" + str(i)
-            #     rob_entry = self.ROB.read(rob_entry_key)
-
-            #     if rob_entry is not None:
-            #         alias, value, done = rob_entry
-            #         print(f"[COMMIT] Checking ROB entry {rob_entry_key}: alias={alias}, value={value}, done={done}")
-
-            #         # Extra cycle wait if instruction not done
-            #         if done == False and value is not None:
-            #             print(f"[COMMIT] Waiting 1 cycle to commit {value} to {alias} from {rob_entry_key}")
-            #             self.ROB.update_done(rob_entry_key, True)
-                        
-            #         if done == True:
-            #             print(f"[COMMIT] Committing {value} to {alias} from {rob_entry_key}")
-            #             self.ARF.write(alias, value)
-
-            #             # Update RAT to point back to ARF if it still points to this ROB entry
-            #             if self.RAT.read(alias) == rob_entry_key:
-            #                 self.RAT.write(alias, "ARF" + str(int(alias[1:]) + 32))  
-            #             # Clear the ROB entry
-            #             self.ROB.clear(rob_entry_key)
-            #             # Only commit one instruction per cycle
-            #             break
+            # Set to true if it has a value for all of them
+            for i in range(1, self.ROB.max_entries + 1):
+                rob_entry_key = "ROB" + str(i)
+                rob_entry = self.ROB.read(rob_entry_key)
+                # make sure the key is clean
+                if rob_entry is not None:
+                    # pull values
+                    alias, value, done = rob_entry
+                    print(f"[COMMIT] Checking ROB entry {rob_entry_key}: alias={alias}, value={value}, done={done}")
+                    if value is not None and done is not True:
+                        print(f"[COMMIT] Waiting 1 cycle to commit {value} to {alias} from {rob_entry_key}")
+                        self.ROB.update_done(rob_entry_key, True)
