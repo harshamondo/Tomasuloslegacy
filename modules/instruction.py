@@ -13,6 +13,13 @@ class Instruction:
 		self.offset = None
 		self.immediate = None
 
+		self.rob_tag = None
+		self.issue_cycle = None
+		self.execute_start_cycle = None
+		self.execute_end_cycle = None
+		self.write_back_cycle = None
+		self.commit_cycle = None
+
 		# Parse operands for specific opcodes
 		if opcode is not None and operands is not None:
 			op = opcode.lower()

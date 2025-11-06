@@ -94,7 +94,7 @@ class Architecture:
         # TODO : Initialize other RS_Tables for multiplier, integer adder, load/store with respective functions
         print(f"Load/Store RS Num: {self.load_store_rs_num}, Load/Store FU: {self.load_store_FU}, Cycles: {self.load_store_cycles}, Mem Cycles: {self.load_store_mem_cycles}")
         self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU, cycles_per_instruction=self.load_store_cycles)
-
+        #there are two cycles, one for calculating address (adder), and ld's time spent in memory
         print(f"Multiplier RS Num: {self.multiplier_rs_num}, Multiplier FU: {self.multiplier_FU}, Cycles: {self.multiplier_cycles}, Mem Cycles: {self.multiplier_mem_cycles}")
         self.fs_mult = RS_Table(type="fs_fp_mult", num_rs_units=self.multiplier_rs_num, num_FU_units=self.multiplier_FU, cycles_per_instruction=self.multiplier_cycles)
         self.fs_mult.add_op( ("Mult.d", rs_fp_mul_op) )  # Placeholder, replace with actual multiplication function!!!
@@ -118,6 +118,8 @@ class Architecture:
             self.fs_branch
         ]
 
+        self.instruction_pointer = 0
+        self.instructions_in_flight = []
         #Initialize instruction register
         self.instruction_queue = deque()
         self.init_instr()
@@ -208,6 +210,7 @@ class Architecture:
                 instr.immediate = None
 
             self.instruction_queue.append(instr)
+            self.instructions_in_flight.append(instr)
 
     # ISSUE --------------------------------------------------------------
     def fetch(self):
@@ -309,6 +312,7 @@ class Architecture:
             elif (check == "Sd" or check == "Ld") and self.fs_LS.length() < self.load_store_rs_num:
                 print("[ISSUE] Added ld or sd")
                 self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF))
+
             elif (check == "Beq" or check == "Bne"):
                 # Ignore the next fetch until the Bne is done
                 halt = True
@@ -329,9 +333,11 @@ class Architecture:
                 #Change the ROB write
                 self.ROB.write(current_ROB, "Branch", None, False)
             else:
-                self.ROB.write(current_ROB, current_instruction.dest, None, False)
+                self.ROB.write(current_ROB, current_instruction.dest, None, False,current_instruction)
 
             self.RAT.write(current_instruction.dest, current_ROB)
+
+            self.instruction_pointer += 1
 
     # EXECUTE --------------------------------------------------------------
     # Checks the reservation stations for ready instructions, if they are ready, executes them
@@ -351,6 +357,7 @@ class Architecture:
             # General execution logic for RS units
             # if rs_table.check_rs_full() is False:
             # Start execution if operands ready, not already executing, and FU available
+            print(f"LOOT: value1 = {rs_unit.value1}, value2 = {rs_unit.value2}, cycles_left = {rs_unit.cycles_left}, busy units = {rs_table.busy_FU_units}, num units = {rs_table.num_FU_units}") 
             if (
                 rs_unit.value1 is not None
                 and rs_unit.value2 is not None
@@ -476,7 +483,7 @@ class Architecture:
     def commit(self):
         if self.ROB.getEntries() > 0:
             # Peak the front
-            addr, (alias, value, done) = self.ROB.peek()
+            addr, (alias, value, done,_) = self.ROB.peek()
             print(f"[COMMIT] Checking ROB entry {addr} and clearing from ROB: alias={alias}, value={value}, done={done}")
             if done == True:
                 addr = self.ROB.find_by_alias(alias)
