@@ -45,8 +45,8 @@ def check_init():
     print("logger initialized")  
 
     #loot = Architecture("instruction_sets/branch_test.txt")
-    #loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
-    loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
+    loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
+    #loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
     #loot = Architecture("instruction_sets/instructions.txt")
     #loot = Architecture("instruction_sets/load_store_test.txt")
     

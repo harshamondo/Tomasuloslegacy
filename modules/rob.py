@@ -23,9 +23,9 @@ class ROB:
     def peek(self):
         # Return (address, (alias, value, done)) for the oldest entry or (None, None) if empty
         if not self.data:
-            return (None, None, None)
+           return (None, (None, None, None, None))
         k = next(iter(self.data))
-        return (k, self.data[k], None)
+        return (k, self.data[k])
 
     def pop(self):
         # Remove and return (address, (alias, value, done)) for the oldest entry or (None, None)
@@ -43,7 +43,7 @@ class ROB:
 
     def find_by_alias(self, alias):
         # Return the address key for the given alias
-        for addr, (a, _, _) in self.data.items():
+        for addr, (a, _, _, _) in self.data.items():
             if a == alias:
                 return addr
         return None

@@ -282,43 +282,44 @@ class Architecture:
             # Grab the opcode
             check = current_instruction.opcode
             current_ROB = None
-                
+            
+            current_instruction.issue_cycle = self.clock
             #add to ROB and RAT regardless if we must wait for RS space
             #TODO  the register rename doesn't seem to account for the size of the ROB, absolutely needs to be fixed!
             #TODO  we write to the ROB(X) and the search to see if the value exists. this is poor implementation
             current_ROB = "ROB" + str(self.ROB.getEntries()+1)
-
+            current_instruction.rob_tag = current_ROB
             #check for space in RS
             #have to add tables for mult, and ld/store
             print(f"[ISSUE] Check: {check}")
             if (check == "Add.d" or check == "Sub.d") and self.fs_fp_add.length() < self.FP_adder_rs_num:
-                self.fs_fp_add.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
+                self.fs_fp_add.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
 
             elif (check == "Add" or check == "Sub" or check == "Addi") and self.fs_int_adder.length() < self.int_adder_rs_num:
                 print("[ISSUE] ------")
                 if check == "Addi":
-                    rs = RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.immediate, self.RAT, self.ARF)
+                    rs = RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.immediate, self.RAT, self.ARF,self.clock)
                     # immediate value goes to value2 without tag needed
                     rs.value2 = int(current_instruction.immediate)
                     # print("[ISSUE] Added Addi RS Unit with immediate value:", rs.value2)
                     # print("[ISSUE] RS Unit details:", rs)
                     self.fs_int_adder.table.append(rs)
                 else:
-                    self.fs_int_adder.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
+                    self.fs_int_adder.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
 
             elif (check == "Mult.d") and self.fs_mult.length() < self.multiplier_rs_num:
-                self.fs_mult.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
+                self.fs_mult.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
 
             elif (check == "Sd" or check == "Ld") and self.fs_LS.length() < self.load_store_rs_num:
                 print("[ISSUE] Added ld or sd")
-                self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF))
+                self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock))
 
             elif (check == "Beq" or check == "Bne"):
                 # Ignore the next fetch until the Bne is done
                 halt = True
 
                 # Branch predication will be here
-                self.fs_branch.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF))
+                self.fs_branch.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
                 self.fs_branch.set_branch_offset(0, current_instruction.offset)
 
                 # branch does not stack at the moment!!
@@ -357,7 +358,8 @@ class Architecture:
             # General execution logic for RS units
             # if rs_table.check_rs_full() is False:
             # Start execution if operands ready, not already executing, and FU available
-            print(f"LOOT: value1 = {rs_unit.value1}, value2 = {rs_unit.value2}, cycles_left = {rs_unit.cycles_left}, busy units = {rs_table.busy_FU_units}, num units = {rs_table.num_FU_units}") 
+            print(f"LOOT: value1 = {rs_unit.value1}, value2 = {rs_unit.value2}, cycles_left = {rs_unit.cycles_left}, busy units = {rs_table.busy_FU_units}, num units = {rs_table.num_FU_units}")
+            instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
             if (
                 rs_unit.value1 is not None
                 and rs_unit.value2 is not None
@@ -366,7 +368,12 @@ class Architecture:
                 and rs_table.busy_FU_units <= rs_table.num_FU_units 
             ):
                 print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2} for {rs_table.cycles_per_instruction} cycles.")
+                
                 rs_unit.cycles_left = rs_table.cycles_per_instruction
+                
+                #roshan
+                if instr_ref and instr_ref.execute_start_cycle is None:
+                    instr_ref.execute_start_cycle = self.clock + 1
 
                 if rs_unit.written_back == True:
                     rs_unit.written_back = False
@@ -379,13 +386,23 @@ class Architecture:
             elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 1:
                 rs_unit.cycles_left -= 1
                 print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
+
             elif rs_unit.cycles_left == 1:
                 rs_unit.cycles_left -= 1
                 print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
+                #roshan
+                if instr_ref and instr_ref.execute_end_cycle is None:
+                    instr_ref.execute_end_cycle = self.clock 
             # complete execution if cycles left is 0
             elif rs_unit.cycles_left == 0:
                 rs_unit.DST_value = rs_table.compute(rs_unit)
                 print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
+                
+                #roshan
+                instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
+                if instr_ref:
+                    instr_ref.write_back_cycle = self.clock
+
                 # Handle branches here
 
                 # could be buffered but we are just leaving this for write back stage to handle
@@ -483,12 +500,16 @@ class Architecture:
     def commit(self):
         if self.ROB.getEntries() > 0:
             # Peak the front
-            addr, (alias, value, done,_) = self.ROB.peek()
+
+            addr, (alias, value, done, instr_ref) = self.ROB.peek()
+
             print(f"[COMMIT] Checking ROB entry {addr} and clearing from ROB: alias={alias}, value={value}, done={done}")
             if done == True:
                 addr = self.ROB.find_by_alias(alias)
                 print(f"[COMMIT] Committing {value} to {alias} from {addr}")
                 self.ARF.write(alias, value)
+                if instr_ref and instr_ref.commit_cycle is None:
+                    instr_ref.commit_cycle = self.clock
 
                 # Update RAT to point back to ARF if it still points to this ROB entry
                 if self.RAT.read(alias) == addr:
@@ -504,7 +525,7 @@ class Architecture:
                 # make sure the key is clean
                 if rob_entry is not None:
                     # pull values
-                    alias, value, done = rob_entry
+                    alias, value, done, instr_ref = rob_entry
                     print(f"[COMMIT] Checking ROB entry {rob_entry_key}: alias={alias}, value={value}, done={done}")
                     if value is not None and done is not True:
                         print(f"[COMMIT] Waiting 1 cycle to commit {value} to {alias} from {rob_entry_key}")
