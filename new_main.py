@@ -8,6 +8,7 @@ from architecture import Architecture
 from pathlib import Path
 from logger import setup_logging, StreamToLogger
 import logging, sys
+from modules.print import print_timing_table 
 
 # Helper : Function to print ARF and RAT contents
 def print_ARF_RAT(arch):
@@ -47,6 +48,7 @@ def check_init():
     loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
     #loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
     #loot = Architecture("instruction_sets/instructions.txt")
+    #loot = Architecture("instruction_sets/load_store_test.txt")
     
     print("Initial ARF and RAT contents:")
     # print_ARF_RAT(loot)
@@ -68,6 +70,8 @@ def check_init():
     print(f"Final ARF and RAT contents after {total_cycles} issue/execute cycles:")
     print_ARF_RAT(loot)
     print_ROB(loot)
+
+    print_timing_table(loot.instructions_in_flight) 
 
 # Don't use this, use the correct __name__ guard below
 def main():

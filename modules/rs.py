@@ -16,6 +16,9 @@ class RS_Unit:
             self.value1 = None
             self.value2 = None
 
+            #potentially for ld/sd
+            self.offset = None
+
             # Branch offset
             self.branch_offset = None
             # self.immediate = immediate
@@ -35,10 +38,17 @@ class RS_Unit:
             #self.DST_tag = RAT_object.read(DST_tag)
             self.DST_tag = DST_tag
 
-            if self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ROB":
-                self.tag1 = self.RAT.read(self.reg1)
-            elif self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ARF":
-                self.value1 = self.ARF.read(self.reg1)
+            #dont need this but going to add as a safe guard for ld/sd
+            if self.opcode != "ld" or self.opcode != "sd":
+                  
+                  if self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ROB":
+                        self.tag1 = self.RAT.read(self.reg1)
+                  elif self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ARF":
+                        self.value1 = self.ARF.read(self.reg1)
+            else:
+                  self.value1 = self.offset
+      
+            
 
             if self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ROB":
                 self.tag2 = self.RAT.read(self.reg2)

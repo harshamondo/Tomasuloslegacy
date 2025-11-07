@@ -10,11 +10,11 @@ class ROB:
         return self.data.get(address, None)
 
     # Write to the ROB entry
-    def write(self, address, alias, value, done):
+    def write(self, address, alias, value, done, instr_ref = None):
         self.entries+=1
         if self.entries > self.max_entries:
             self.entries = 0
-        self.data[address] = alias, value, done
+        self.data[address] = alias, value, done, instr_ref
 
     def clear(self,address):
         self.data.pop(address, None)
@@ -23,7 +23,7 @@ class ROB:
     def peek(self):
         # Return (address, (alias, value, done)) for the oldest entry or (None, None) if empty
         if not self.data:
-            return (None, None)
+           return (None, (None, None, None, None))
         k = next(iter(self.data))
         return (k, self.data[k])
 
@@ -43,7 +43,7 @@ class ROB:
 
     def find_by_alias(self, alias):
         # Return the address key for the given alias
-        for addr, (a, _, _) in self.data.items():
+        for addr, (a, _, _, _) in self.data.items():
             if a == alias:
                 return addr
         return None
@@ -64,12 +64,30 @@ class ROB:
     def __str__(self):
         return f"ROB_entry(data={self.data})"
     
-    def update(self, address, value):
-        if address in self.data:
-            alias, _, done = self.data[address]
-            self.data[address] = alias, value, done
+    #def update(self, address, value):
+        #if address in self.data:
+            #alias, _, done = self.data[address]
+            #self.data[address] = alias, value, done
 
-    def update_done(self, address, done):
-        if address in self.data:
-            alias, value, _ = self.data[address]
-            self.data[address] = alias, value, done
+    def update(self, alias, value, done=False):
+        entry = self.data.get(alias)
+        if entry:
+            #Preserve the instruction reference (instr_ref) when updating.
+            dest, _, _, instr_ref = entry 
+            self.data[alias] = (dest, value, done, instr_ref) 
+            return True
+        return False
+    
+    #def update_done(self, address, done):
+        #if address in self.data:
+            #alias, value, _ = self.data[address]
+            #self.data[address] = alias, value, done
+
+    def update_done(self, alias, done):
+        entry = self.data.get(alias)
+        if entry:
+            #Preserve dest, value, and instruction reference
+            dest, value, _, instr_ref = entry
+            self.data[alias] = (dest, value, done, instr_ref)
+            return True
+        return False
