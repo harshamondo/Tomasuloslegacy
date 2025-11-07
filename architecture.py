@@ -94,6 +94,8 @@ class Architecture:
         # TODO : Initialize other RS_Tables for multiplier, integer adder, load/store with respective functions
         print(f"Load/Store RS Num: {self.load_store_rs_num}, Load/Store FU: {self.load_store_FU}, Cycles: {self.load_store_cycles}, Mem Cycles: {self.load_store_mem_cycles}")
         self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU, cycles_per_instruction=self.load_store_cycles)
+        self.fs_LS.add_op(("Add",rs_int_add_op))
+        
         #there are two cycles, one for calculating address (adder), and ld's time spent in memory
         print(f"Multiplier RS Num: {self.multiplier_rs_num}, Multiplier FU: {self.multiplier_FU}, Cycles: {self.multiplier_cycles}, Mem Cycles: {self.multiplier_mem_cycles}")
         self.fs_mult = RS_Table(type="fs_fp_mult", num_rs_units=self.multiplier_rs_num, num_FU_units=self.multiplier_FU, cycles_per_instruction=self.multiplier_cycles)
@@ -372,8 +374,14 @@ class Architecture:
                 rs_unit.cycles_left = rs_table.cycles_per_instruction
                 
                 #roshan
+                print(f"CLOCK CYCLE CHECKER: {instr_ref.issue_cycle}")
+                print(f"CLOCK CYCLE CHECKER: {self.clock}")
+    
                 if instr_ref and instr_ref.execute_start_cycle is None:
-                    instr_ref.execute_start_cycle = self.clock + 1
+                    if instr_ref.issue_cycle  - self.clock == 0:
+                        instr_ref.execute_start_cycle = rs_unit.cycle_issued + 1
+                    else:
+                        instr_ref.execute_start_cycle = self.clock
 
                 if rs_unit.written_back == True:
                     rs_unit.written_back = False
