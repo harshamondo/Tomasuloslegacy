@@ -5,7 +5,7 @@ def print_timing_table(instructions):
         return
 
     # Column headers
-    headers = ["Instruction", "Issue", "Execute Start", "Execute End", "Write Back", "Commit"]
+    headers = ["Instruction", "Issue", "Execute Start", "Execute End", "MEM", "Write Back", "Commit"]
     
     # Calculate initial column widths based on headers
     col_widths = [len(h) for h in headers]
@@ -25,6 +25,7 @@ def print_timing_table(instructions):
             str(instr.issue_cycle) if instr.issue_cycle is not None else "-",
             str(instr.execute_start_cycle) if instr.execute_start_cycle is not None else "-",
             str(instr.execute_end_cycle) if instr.execute_end_cycle is not None else "-",
+            str(instr.mem_cycle) if instr.mem_cycle is not None else "-",
             str(instr.write_back_cycle) if instr.write_back_cycle is not None else "-",
             str(instr.commit_cycle) if instr.commit_cycle is not None else "-"
         ]

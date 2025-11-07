@@ -4,7 +4,7 @@ import csv
 
 from modules.instruction import Instruction
 from modules.rob import ROB
-from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op, rs_fp_mul_op, rs_int_add_op, rs_int_sub_op, rs_int_addi_op, rs_branch_bne, rs_branch_beq
+from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op, rs_fp_mul_op, rs_int_add_op, rs_int_sub_op, rs_int_addi_op, rs_branch_bne, rs_branch_beq, rs_sd_op,rs_ld_op
 
 from modules.arf import ARF
 from modules.rat import RAT
@@ -93,9 +93,10 @@ class Architecture:
 
         # TODO : Initialize other RS_Tables for multiplier, integer adder, load/store with respective functions
         print(f"Load/Store RS Num: {self.load_store_rs_num}, Load/Store FU: {self.load_store_FU}, Cycles: {self.load_store_cycles}, Mem Cycles: {self.load_store_mem_cycles}")
-        self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU, cycles_per_instruction=self.load_store_cycles)
-        self.fs_LS.add_op(("Add",rs_int_add_op))
-        
+        self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU, cycles_per_instruction=self.load_store_cycles,load_store_address_calc = self.load_store_cycles)
+        self.fs_LS.add_op(("ld",rs_ld_op))
+        self.fs_LS.add_op(("sd",rs_sd_op))
+
         #there are two cycles, one for calculating address (adder), and ld's time spent in memory
         print(f"Multiplier RS Num: {self.multiplier_rs_num}, Multiplier FU: {self.multiplier_FU}, Cycles: {self.multiplier_cycles}, Mem Cycles: {self.multiplier_mem_cycles}")
         self.fs_mult = RS_Table(type="fs_fp_mult", num_rs_units=self.multiplier_rs_num, num_FU_units=self.multiplier_FU, cycles_per_instruction=self.multiplier_cycles)
@@ -279,7 +280,7 @@ class Architecture:
             #print(f"[ISSUE] int_adder_rs_num: {self.int_adder_rs_num}, fs_int_adder.table size: {self.fs_fp_add.length()}")
             for rs_table in self.all_rs_tables:
                 rs_table.print_rs_without_intermediates()
-            print(f"[ISSUE] Issuing instruction: {current_instruction}")
+            print(f"[ISSUE] Issuing instruction: {current_instruction.opcode}")
 
             # Grab the opcode
             check = current_instruction.opcode
@@ -312,7 +313,7 @@ class Architecture:
             elif (check == "Mult.d") and self.fs_mult.length() < self.multiplier_rs_num:
                 self.fs_mult.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
 
-            elif (check == "Sd" or check == "Ld") and self.fs_LS.length() < self.load_store_rs_num:
+            elif (check == "sd" or check == "ld") and self.fs_LS.length() < self.load_store_rs_num:
                 print("[ISSUE] Added ld or sd")
                 self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock))
 
@@ -371,7 +372,10 @@ class Architecture:
             ):
                 print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2} for {rs_table.cycles_per_instruction} cycles.")
                 
-                rs_unit.cycles_left = rs_table.cycles_per_instruction
+                if rs_unit.opcode == "ld" or rs_unit.opcode == "sd":
+                    rs_unit.cycles_left = rs_table.cycles_in_ex_b4_mem
+                else:
+                    rs_unit.cycles_left = rs_table.cycles_per_instruction
                 
                 #roshan
                 print(f"CLOCK CYCLE CHECKER: {instr_ref.issue_cycle}")
@@ -443,8 +447,12 @@ class Architecture:
     def execute(self):
         # Execute logic for Floating Point Adder/Subtracter RS
         for rs_table in self.all_rs_tables:
+            print(f"SIZE OF ALL RS TABLES: {len(rs_table.table)}")
             self.parse_rs_table(rs_table)
-
+    def memory(self):
+        #this stage is only for ld
+        pass
+    
     # WRITE BACK --------------------------------------------------------------
     # Helper function for write back
     def write_back(self):

@@ -45,14 +45,14 @@ def check_init():
     print("logger initialized")  
 
     #loot = Architecture("instruction_sets/branch_test.txt")
-    loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
+    #loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
     #loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
     #loot = Architecture("instruction_sets/instructions.txt")
-    #loot = Architecture("instruction_sets/load_store_test.txt")
+    loot = Architecture("instruction_sets/load_store_test.txt")
     
     print("Initial ARF and RAT contents:")
     # print_ARF_RAT(loot)
-    total_cycles = 30
+    total_cycles = 5
 
     print(f"Current PC: {loot.PC}")
     for i in range(1,total_cycles):
@@ -67,9 +67,9 @@ def check_init():
         loot.clock += 1
         print("--------------------------------------------------")
 
-    print(f"Final ARF and RAT contents after {total_cycles} issue/execute cycles:")
-    print_ARF_RAT(loot)
-    print_ROB(loot)
+   # print(f"Final ARF and RAT contents after {total_cycles} issue/execute cycles:")
+  # print_ARF_RAT(loot)
+   # print_ROB(loot)
 
     print_timing_table(loot.instructions_in_flight) 
 

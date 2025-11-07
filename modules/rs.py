@@ -17,7 +17,7 @@ class RS_Unit:
             self.value2 = None
 
             #potentially for ld/sd
-            self.offset = None
+            self.offset = reg1
 
             # Branch offset
             self.branch_offset = None
@@ -39,14 +39,15 @@ class RS_Unit:
             self.DST_tag = DST_tag
 
             #dont need this but going to add as a safe guard for ld/sd
-            if self.opcode != "ld" or self.opcode != "sd":
+            if self.opcode == "ld" or self.opcode == "sd":
                   
+                  self.value1 = self.offset
+            else:
+
                   if self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ROB":
                         self.tag1 = self.RAT.read(self.reg1)
                   elif self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ARF":
                         self.value1 = self.ARF.read(self.reg1)
-            else:
-                  self.value1 = self.offset
       
             
 
@@ -77,13 +78,14 @@ OpPair = tuple[str, OpFunc]
 
 # TODO : Neeed to add op tables that has a tuple set of operation name and function to compute
 class RS_Table:
-      def __init__(self, type = None, num_rs_units = 0, num_FU_units = 0, cycles_per_instruction = 0, op = None):
+      def __init__(self, type = None, num_rs_units = 0, num_FU_units = 0, cycles_per_instruction = 0, load_store_address_calc = None):
             self.op = []
             self.table = []
             self.type = type
             self.num_units = num_rs_units
             self.num_FU_units = num_FU_units
             self.cycles_per_instruction = cycles_per_instruction
+            self.cycles_in_ex_b4_mem = load_store_address_calc
             self.busy_FU_units = 0
             #store/load RS are queues
             if self.type == "fs_fp_ls":
@@ -194,3 +196,10 @@ def rs_branch_bne(self, rs_unit: RS_Unit):
 
 def rs_branch_beq(self, rs_unit: RS_Unit):
       return rs_unit.value1 == rs_unit.value2
+
+def rs_ld_op(self, rs_unit: RS_Unit):
+      return rs_unit.value1 + rs_unit.value2
+
+def rs_sd_op(self, rs_unit: RS_Unit):
+      return rs_unit.value1 + rs_unit.value2
+
