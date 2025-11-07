@@ -78,7 +78,7 @@ OpPair = tuple[str, OpFunc]
 
 # TODO : Neeed to add op tables that has a tuple set of operation name and function to compute
 class RS_Table:
-      def __init__(self, type = None, num_rs_units = 0, num_FU_units = 0, cycles_per_instruction = 0, load_store_address_calc = None):
+      def __init__(self, type = None, num_rs_units = 0, num_FU_units = 0, cycles_per_instruction = 0, load_store_address_calc = None, memory = None):
             self.op = []
             self.table = []
             self.type = type
@@ -90,6 +90,7 @@ class RS_Table:
             #store/load RS are queues
             if self.type == "fs_fp_ls":
                   self.table = deque()
+                  self.MEM = memory
 
       def __getitem__(self, idx):
             return self.table[idx]
@@ -198,7 +199,7 @@ def rs_branch_beq(self, rs_unit: RS_Unit):
       return rs_unit.value1 == rs_unit.value2
 
 def rs_ld_op(self, rs_unit: RS_Unit):
-      return rs_unit.value1 + rs_unit.value2
+     return self.MEM.read(rs_unit.value1 + rs_unit.value2)
 
 def rs_sd_op(self, rs_unit: RS_Unit):
       return rs_unit.value1 + rs_unit.value2

@@ -21,7 +21,11 @@ class Instruction:
 		self.commit_cycle = None
 
 		#ONLY LD
-		self.mem_cycle = None
+		self.mem_cycle_start = None
+		self.mem_cycle_end = None
+
+		#ONLY SD
+		self.commit_cycle_SD = None
 
 		# Parse operands for specific opcodes
 		if opcode is not None and operands is not None:

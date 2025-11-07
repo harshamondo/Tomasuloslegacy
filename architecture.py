@@ -8,6 +8,7 @@ from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op, rs_fp_mul_
 
 from modules.arf import ARF
 from modules.rat import RAT
+from modules.memory import memory
 from modules.helper import arf_from_csv, is_arf, rat_from_csv, init_ARF_RAT
 from pathlib import Path
 from default_generator.rat_arf_gen import print_file_arf, print_file_rat
@@ -41,7 +42,13 @@ class Architecture:
         self.clock = 1
         self.PC = 0x0
 
+        self.previous_ROB = None
         #parsing code to set the number of functional units and reservation stations will go here
+
+        #memory must be initiialized before all the RS tables
+        #Can add way to parse a config for default memory addresses and values
+        self.MEM = memory()
+
         with open(self.config, newline='') as f:
             reader = csv.DictReader(f)
 
@@ -93,7 +100,7 @@ class Architecture:
 
         # TODO : Initialize other RS_Tables for multiplier, integer adder, load/store with respective functions
         print(f"Load/Store RS Num: {self.load_store_rs_num}, Load/Store FU: {self.load_store_FU}, Cycles: {self.load_store_cycles}, Mem Cycles: {self.load_store_mem_cycles}")
-        self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU, cycles_per_instruction=self.load_store_cycles,load_store_address_calc = self.load_store_cycles)
+        self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU, cycles_per_instruction=self.load_store_cycles,load_store_address_calc = self.load_store_cycles, memory = self.MEM)
         self.fs_LS.add_op(("ld",rs_ld_op))
         self.fs_LS.add_op(("sd",rs_sd_op))
 
@@ -157,7 +164,6 @@ class Architecture:
 
         # Queue for the CDB
         self.CDB = deque()
-
         # Halt
         self.halt = False
 
@@ -372,7 +378,9 @@ class Architecture:
             ):
                 print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2} for {rs_table.cycles_per_instruction} cycles.")
                 
-                if rs_unit.opcode == "ld" or rs_unit.opcode == "sd":
+                if rs_unit.opcode == "ld":
+                    rs_unit.cycles_left = rs_table.cycles_in_ex_b4_mem + rs_table.cycles_per_instruction
+                elif rs_unit.opcode == "sd":
                     rs_unit.cycles_left = rs_table.cycles_in_ex_b4_mem
                 else:
                     rs_unit.cycles_left = rs_table.cycles_per_instruction
@@ -396,24 +404,49 @@ class Architecture:
 
             # Decrement remaining cycles if currently executing
             elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 1:
+                
                 rs_unit.cycles_left -= 1
+                
+                if rs_unit.opcode == "ld":
+                    if rs_unit.cycles_left == rs_table.cycles_per_instruction:
+                        if instr_ref and instr_ref.mem_cycle_start is None:
+                            instr_ref.mem_cycle_start = self.clock + 1
+                    
+                        if instr_ref and instr_ref.execute_end_cycle is None:
+                            instr_ref.execute_end_cycle = self.clock 
+
                 print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
 
             elif rs_unit.cycles_left == 1:
                 rs_unit.cycles_left -= 1
                 print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
                 #roshan
-                if instr_ref and instr_ref.execute_end_cycle is None:
-                    instr_ref.execute_end_cycle = self.clock 
+                if rs_unit.opcode == "ld":
+                    print(f"HERE")
+                    if instr_ref and instr_ref.mem_cycle_end is None:
+                        instr_ref.mem_cycle_end = self.clock 
+                else:
+                    if instr_ref and instr_ref.execute_end_cycle is None:
+                        instr_ref.execute_end_cycle = self.clock 
+
+
             # complete execution if cycles left is 0
             elif rs_unit.cycles_left == 0:
-                rs_unit.DST_value = rs_table.compute(rs_unit)
+
+                if rs_unit.opcode == "ld" or rs_unit.opcode == "sd":
+                    rs_unit.DST_value = rs_table.compute
+                else: 
+                    rs_unit.DST_value = rs_table.compute(rs_unit)
                 print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
                 
                 #roshan
                 instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
-                if instr_ref:
-                    instr_ref.write_back_cycle = self.clock
+
+                if rs_unit.opcode == "sd":
+                    pass
+                else:
+                    if instr_ref:
+                        instr_ref.write_back_cycle = self.clock
 
                 # Handle branches here
 
@@ -451,6 +484,8 @@ class Architecture:
             self.parse_rs_table(rs_table)
     def memory(self):
         #this stage is only for ld
+        #integrate this into execute
+
         pass
     
     # WRITE BACK --------------------------------------------------------------
@@ -514,18 +549,39 @@ class Architecture:
     # COMMIT --------------------------------------------------------------
     # TODO : Implement commit logic to use head and tail logic as per ROB design in class
     def commit(self):
+        SD_count = 0
         if self.ROB.getEntries() > 0:
-            # Peak the front
-
+            #Peak the front
             addr, (alias, value, done, instr_ref) = self.ROB.peek()
-
+            print(f"INSTRUCTION REF {instr_ref}")
             print(f"[COMMIT] Checking ROB entry {addr} and clearing from ROB: alias={alias}, value={value}, done={done}")
             if done == True:
+
                 addr = self.ROB.find_by_alias(alias)
                 print(f"[COMMIT] Committing {value} to {alias} from {addr}")
                 self.ARF.write(alias, value)
-                if instr_ref and instr_ref.commit_cycle is None:
-                    instr_ref.commit_cycle = self.clock
+
+                if instr_ref.opcode == "sd":
+                    if instr_ref and instr_ref.commit_cycle is None:
+                        instr_ref.commit_cycle = self.clock
+                        instr_ref.commit_cycle_SD = self.clock + self.fs_LS.cycles_per_instruction
+                    
+                    #for now just code in the mem write
+                    #need address + value
+                    #we dont have the value which 
+                    #address and value can depend on an ROB
+                    self.MEM.write(value,1)
+
+                else:
+                    if self.previous_ROB == "sd":
+                        if instr_ref and instr_ref.commit_cycle is None:
+                            instr_ref.commit_cycle = self.clock + self.fs_LS.cycles_per_instruction - 1
+                    else:
+                        if instr_ref and instr_ref.commit_cycle is None:
+                            instr_ref.commit_cycle = self.clock
+                    
+                if instr_ref.opcode == "sd":
+                    self.previous_ROB = instr_ref.opcode
 
                 # Update RAT to point back to ARF if it still points to this ROB entry
                 if self.RAT.read(alias) == addr:
@@ -536,6 +592,7 @@ class Architecture:
 
             # Set to true if it has a value for all of them
             for i in range(1, self.ROB.max_entries + 1):
+                print(f"{SD_count}")
                 rob_entry_key = "ROB" + str(i)
                 rob_entry = self.ROB.read(rob_entry_key)
                 # make sure the key is clean
@@ -543,6 +600,8 @@ class Architecture:
                     # pull values
                     alias, value, done, instr_ref = rob_entry
                     print(f"[COMMIT] Checking ROB entry {rob_entry_key}: alias={alias}, value={value}, done={done}")
+
                     if value is not None and done is not True:
                         print(f"[COMMIT] Waiting 1 cycle to commit {value} to {alias} from {rob_entry_key}")
                         self.ROB.update_done(rob_entry_key, True)
+
