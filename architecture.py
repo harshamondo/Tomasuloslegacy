@@ -11,6 +11,7 @@ from modules.rat import RAT
 from modules.helper import arf_from_csv, is_arf, rat_from_csv, init_ARF_RAT
 from pathlib import Path
 from default_generator.rat_arf_gen import print_file_arf, print_file_rat
+from modules.btb import BTB
 
 # Overall class that determines the architecture of the CPU
 class Architecture:
@@ -159,6 +160,7 @@ class Architecture:
 
         # Halt
         self.halt = False
+        self.BTB = BTB()
 
         # Create all the savepoint datastructures here
         self.branch_CDB = None
@@ -333,9 +335,13 @@ class Architecture:
                 # Branch predication will be here
                 self.fs_branch.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
                 self.fs_branch.set_branch_offset(0, current_instruction.offset)
-
-                # branch does not stack at the moment!!
                 print(f"[DEBUG] Testing if branch gets to here {self.fs_branch}")
+
+                # add to the btb
+                self.BTB.add_branch(self.PC-0x4, current_instruction.offset)
+                print(f"PC : {self.PC}")
+                print("[BRANCH] Printing BTB ")
+                print(self.BTB)
 
                 # save all the main data structures to allow for a system save point
                 print(f"[DEBUG] Saving all the data here!")

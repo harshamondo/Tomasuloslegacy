@@ -21,7 +21,7 @@ class BTB:
         idx = self._index_of(tag)
         if idx != -1:
             self.data[idx][1] = Target
-            self.data[idx][2] = 0  # default: not taken
+            self.data[idx][2] = 0  
             return idx
 
         # Insert into first free slot
@@ -30,11 +30,11 @@ class BTB:
                 if slot[0] is None:
                     self.data[i][0] = tag
                     self.data[i][1] = Target
-                    self.data[i][2] = 0  # default: not taken
+                    self.data[i][2] = 0  
                     self.entries += 1
                     return i
 
-        # BTB full (no replacement policy specified)
+        # BTB full 
         return None
 
     def change_prediction(self, PC, taken):
