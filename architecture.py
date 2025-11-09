@@ -48,6 +48,7 @@ class Architecture:
         #memory must be initiialized before all the RS tables
         #Can add way to parse a config for default memory addresses and values
         self.MEM = memory()
+        self.MEM.write(34,2.5)
 
         with open(self.config, newline='') as f:
             reader = csv.DictReader(f)
@@ -164,6 +165,9 @@ class Architecture:
 
         # Queue for the CDB
         self.CDB = deque()
+
+        #temp SD value holder
+        self.temp_SD_val = None
         # Halt
         self.halt = False
 
@@ -296,6 +300,8 @@ class Architecture:
             #add to ROB and RAT regardless if we must wait for RS space
             #TODO  the register rename doesn't seem to account for the size of the ROB, absolutely needs to be fixed!
             #TODO  we write to the ROB(X) and the search to see if the value exists. this is poor implementation
+            
+    
             current_ROB = "ROB" + str(self.ROB.getEntries()+1)
             current_instruction.rob_tag = current_ROB
             #check for space in RS
@@ -321,7 +327,11 @@ class Architecture:
 
             elif (check == "sd" or check == "ld") and self.fs_LS.length() < self.load_store_rs_num:
                 print("[ISSUE] Added ld or sd")
-                self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock))
+                #this already works for load
+                if check == "sd":
+                    self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock,current_instruction.dest))
+                else:
+                    self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock))
 
             elif (check == "Beq" or check == "Bne"):
                 # Ignore the next fetch until the Bne is done
@@ -367,15 +377,17 @@ class Architecture:
             # General execution logic for RS units
             # if rs_table.check_rs_full() is False:
             # Start execution if operands ready, not already executing, and FU available
-            print(f"LOOT: value1 = {rs_unit.value1}, value2 = {rs_unit.value2}, cycles_left = {rs_unit.cycles_left}, busy units = {rs_table.busy_FU_units}, num units = {rs_table.num_FU_units}")
+            print(f"LOOT: value1 = {rs_unit.SD_value}, value2 = {rs_unit.value2}, cycles_left = {rs_unit.cycles_left}, busy units = {rs_table.busy_FU_units}, num units = {rs_table.num_FU_units}")
             instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
+
             if (
-                rs_unit.value1 is not None
-                and rs_unit.value2 is not None
-                and rs_unit.cycles_left is None
-                # TODO : Test Pipelined CPU - check for available FU units
-                and rs_table.busy_FU_units <= rs_table.num_FU_units 
+                rs_unit.value1 is not None and 
+                rs_unit.value2 is not None and 
+                rs_unit.cycles_left is None and 
+                rs_table.busy_FU_units <= rs_table.num_FU_units and
+                (rs_unit.opcode != "sd" or rs_unit.SD_value is not None)
             ):
+
                 print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2} for {rs_table.cycles_per_instruction} cycles.")
                 
                 if rs_unit.opcode == "ld":
@@ -390,10 +402,11 @@ class Architecture:
                 print(f"CLOCK CYCLE CHECKER: {self.clock}")
     
                 if instr_ref and instr_ref.execute_start_cycle is None:
-                    if instr_ref.issue_cycle  - self.clock == 0:
-                        instr_ref.execute_start_cycle = rs_unit.cycle_issued + 1
-                    else:
-                        instr_ref.execute_start_cycle = self.clock
+                    if instr_ref is not None:
+                        if instr_ref.issue_cycle  - self.clock == 0:
+                            instr_ref.execute_start_cycle = rs_unit.cycle_issued + 1
+                        else:
+                            instr_ref.execute_start_cycle = self.clock
 
                 if rs_unit.written_back == True:
                     rs_unit.written_back = False
@@ -413,7 +426,10 @@ class Architecture:
                             instr_ref.mem_cycle_start = self.clock + 1
                     
                         if instr_ref and instr_ref.execute_end_cycle is None:
-                            instr_ref.execute_end_cycle = self.clock 
+                            instr_ref.execute_end_cycle = self.clock
+
+                if rs_unit.opcode == "sd":
+                    self.temp_SD_val = rs_unit.SD_value
 
                 print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
 
@@ -433,10 +449,8 @@ class Architecture:
             # complete execution if cycles left is 0
             elif rs_unit.cycles_left == 0:
 
-                if rs_unit.opcode == "ld" or rs_unit.opcode == "sd":
-                    rs_unit.DST_value = rs_table.compute
-                else: 
-                    rs_unit.DST_value = rs_table.compute(rs_unit)
+       
+                rs_unit.DST_value = rs_table.compute(rs_unit)
                 print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
                 
                 #roshan
@@ -533,6 +547,9 @@ class Architecture:
                         print(f"[WRITE BACK] Found one in {rs_table.type}")
                         rs_unit.value2 = result
                         print(f"[WRITE BACK] Updated RS Unit {rs_unit} value2 with {result}")
+                    if rs_unit.SD_tag == CDB_res_reg:
+                        rs_unit.SD_value = result
+                        self.temp_SD_val = rs_unit.SD_value
 
                     # Should be able to remove this
                     if rs_unit.value1 is not None and rs_unit.value2 is not None:
@@ -559,7 +576,14 @@ class Architecture:
 
                 addr = self.ROB.find_by_alias(alias)
                 print(f"[COMMIT] Committing {value} to {alias} from {addr}")
-                self.ARF.write(alias, value)
+                
+                if instr_ref.opcode == "ld":
+                    #value should be address of memory
+                    temp_val = self.MEM.read(value)
+                    self.ARF.write(alias,temp_val)
+                else:
+                    self.ARF.write(alias, value)
+
 
                 if instr_ref.opcode == "sd":
                     if instr_ref and instr_ref.commit_cycle is None:
@@ -570,7 +594,10 @@ class Architecture:
                     #need address + value
                     #we dont have the value which 
                     #address and value can depend on an ROB
-                    self.MEM.write(value,1)
+                    
+                    #may cause issues for more SD instructions?
+                    self.MEM.write(value,self.temp_SD_val)
+        
 
                 else:
                     if self.previous_ROB == "sd":
@@ -585,6 +612,7 @@ class Architecture:
 
                 # Update RAT to point back to ARF if it still points to this ROB entry
                 if self.RAT.read(alias) == addr:
+
                     self.RAT.write(alias, "ARF" + str(int(alias[1:]) + 32))  
                 # Clear the ROB entry
                 self.ROB.clear(addr)
@@ -592,7 +620,6 @@ class Architecture:
 
             # Set to true if it has a value for all of them
             for i in range(1, self.ROB.max_entries + 1):
-                print(f"{SD_count}")
                 rob_entry_key = "ROB" + str(i)
                 rob_entry = self.ROB.read(rob_entry_key)
                 # make sure the key is clean

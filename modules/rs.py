@@ -9,10 +9,12 @@ from typing import Callable, Any
 # status means the value is ready for execute
 from collections import deque
 class RS_Unit:
-      def __init__(self, DST_tag = None, opcode = None, reg1 = None, reg2 = None, RAT_object = None, ARF_object = None, cycles_issued = None):
+      def __init__(self, DST_tag = None, opcode = None, reg1 = None, reg2 = None, RAT_object = None, ARF_object = None, cycles_issued = None,SD_dest = None):
             self.opcode = opcode
             self.tag1 = None
             self.tag2 = None
+            self.SD_tag = None
+            self.SD_value = None
             self.value1 = None
             self.value2 = None
 
@@ -34,11 +36,21 @@ class RS_Unit:
             self.RAT = RAT_object
             self.ARF = ARF_object
 
+            self.SD_dest = SD_dest
+
             # We should just assign the value? No need to read
             #self.DST_tag = RAT_object.read(DST_tag)
             self.DST_tag = DST_tag
 
-            #dont need this but going to add as a safe guard for ld/sd
+            #we are doing SD which does not require register renaming
+            if self.opcode == "sd":
+                  if self.RAT.read(self.SD_dest) != None and self.RAT.read(self.SD_dest)[:3] == "ROB":
+                        self.SD_tag = self.RAT.read(self.SD_dest)
+                        print(f"POOPY {self.SD_tag}")
+                  elif self.RAT.read(self.SD_dest) != None and self.RAT.read(self.SD_dest)[:3] == "ARF":
+                        self.SD_value = self.ARF.read(self.SD_dest)
+
+            #this is for address calculation
             if self.opcode == "ld" or self.opcode == "sd":
                   
                   self.value1 = self.offset
@@ -49,8 +61,6 @@ class RS_Unit:
                   elif self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ARF":
                         self.value1 = self.ARF.read(self.reg1)
       
-            
-
             if self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ROB":
                 self.tag2 = self.RAT.read(self.reg2)
             elif self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ARF":
@@ -199,7 +209,7 @@ def rs_branch_beq(self, rs_unit: RS_Unit):
       return rs_unit.value1 == rs_unit.value2
 
 def rs_ld_op(self, rs_unit: RS_Unit):
-     return self.MEM.read(rs_unit.value1 + rs_unit.value2)
+     return rs_unit.value1 + rs_unit.value2
 
 def rs_sd_op(self, rs_unit: RS_Unit):
       return rs_unit.value1 + rs_unit.value2

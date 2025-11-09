@@ -1,3 +1,2 @@
-ld F6, 34(R2)
-sd F5, 54(R5)
-Add.d F1, F2, F3
+Add.d R2, R3, R4
+sd R2 , 0(R3)

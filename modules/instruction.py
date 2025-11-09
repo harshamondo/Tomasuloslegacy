@@ -27,6 +27,8 @@ class Instruction:
 		#ONLY SD
 		self.commit_cycle_SD = None
 
+		self.SD_val = None
+
 		# Parse operands for specific opcodes
 		if opcode is not None and operands is not None:
 			op = opcode.lower()

@@ -52,7 +52,7 @@ def check_init():
     
     print("Initial ARF and RAT contents:")
     # print_ARF_RAT(loot)
-    total_cycles = 13
+    total_cycles = 10
 
     print(f"Current PC: {loot.PC}")
     for i in range(1,total_cycles):
@@ -72,6 +72,8 @@ def check_init():
     print_ROB(loot)
 
     print_timing_table(loot.instructions_in_flight) 
+    #for store word test
+    print(loot.MEM.read(34))
 
 # Don't use this, use the correct __name__ guard below
 def main():
