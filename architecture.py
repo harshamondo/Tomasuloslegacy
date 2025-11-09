@@ -160,6 +160,16 @@ class Architecture:
         # Halt
         self.halt = False
 
+        # Create all the savepoint datastructures here
+        self.branch_CDB = None
+        self.branch_ROB = None
+        self.branch_ARF = None
+        self.branch_RAT = None
+        self.branch_all_rs_tables = None
+
+        # self.branch_fs_fp_add = None
+
+
     # Helper functions to initialize the architecture
 
     # Helper functions to get the functions from the txt file and get them read for issue
@@ -326,6 +336,15 @@ class Architecture:
 
                 # branch does not stack at the moment!!
                 print(f"[DEBUG] Testing if branch gets to here {self.fs_branch}")
+
+                # save all the main data structures to allow for a system save point
+                print(f"[DEBUG] Saving all the data here!")
+                self.branch_CDB = self.CDB
+                self.branch_ROB = self.ROB
+                self.branch_ARF = self.ARF
+                self.branch_RAT = self.RAT
+                self.branch_all_rs_tables = self.all_rs_tables
+
             else:
                 #stall due to full RS
                 #if no conditions are satisified, it must mean the targeted RS is full
@@ -429,7 +448,7 @@ class Architecture:
 
                         self.halt = False  # unfreeze issue/fetch if you halted on branch issue
                         # remove the branch RS entry now that it’s resolved
-                        rs_table.table.remove(rs_unit)
+                        # rs_table.table.remove(rs_unit)
                         print(f"[BRANCH] Resolved: offset={off}, new PC={self.PC}, old PC={oldPC}")
 
                 # could be buffered but we are just leaving this for write back stage to handle

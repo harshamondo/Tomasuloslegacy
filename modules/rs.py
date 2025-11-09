@@ -48,8 +48,6 @@ class RS_Unit:
             else:
                   self.value1 = self.offset
       
-            
-
             if self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ROB":
                 self.tag2 = self.RAT.read(self.reg2)
             elif self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ARF":
