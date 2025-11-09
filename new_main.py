@@ -10,6 +10,9 @@ from logger import setup_logging, StreamToLogger
 import logging, sys
 from modules.print import print_timing_table 
 
+# temporary
+from modules.btb import BTB
+
 # Helper : Function to print ARF and RAT contents
 def print_ARF_RAT(arch):
     print("Architectural Register File (ARF) Contents:")
@@ -44,13 +47,13 @@ def check_init():
 
     print("logger initialized")  
 
-    #loot = Architecture("instruction_sets/branch_test.txt")
-    #loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
+    loot = Architecture("instruction_sets/branch_test.txt")
+    ##loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
     #loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
     #loot = Architecture("instruction_sets/instructions.txt")
     #loot = Architecture("instruction_sets/load_store_test.txt")
     #loot = Architecture("instruction_sets/load_store_forwarding.txt")
-    loot = Architecture("instruction_sets/load_store_memory.txt")
+    #loot = Architecture("instruction_sets/load_store_memory.txt")
     
     print("Initial ARF and RAT contents:")
     # print_ARF_RAT(loot)
@@ -75,21 +78,19 @@ def check_init():
     print_ARF_RAT(loot)
     print_ROB(loot)
 
-    print_timing_table(loot.instructions_in_flight) 
+    print_timing_table(loot.instructions_in_flight)
     #for store word test
     print(loot.MEM.read(25))
 
-# Don't use this, use the correct __name__ guard below
-def main():
-    print("CPU Simulator Main Module")
-
-    loot = Architecture("instruction_sets/instructions.txt")
-    
-    # Test ARF,ROB,RAT, and RS are intialized properly
-    print("Now printing RAT Contents")
-    for i in range(0,len(loot.RAT)):
-          curr = loot.RAT[i]
-          print(curr.ARF_reg,loot.RAT.current_alias)
+def test_btb():
+    hi = BTB()
+    hi.add_branch(0xF, 0xA)           # insert (tag = 0xA & 0b111 = 0b010)
+    print(hi.find_prediction(0xF))    # 0
+    hi.change_prediction(0xF, True)
+    print(hi.find_prediction(0xF))    # 1
+    print(hi.get_target(0xF))         # 0xF
+    print(hi)                         
 
 if __name__ == "__main__":
-	check_init()
+    test_btb()
+	#check_init()  
