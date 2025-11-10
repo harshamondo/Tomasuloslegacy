@@ -101,7 +101,7 @@ class Architecture:
 
         # TODO : Initialize other RS_Tables for multiplier, integer adder, load/store with respective functions
         print(f"Load/Store RS Num: {self.load_store_rs_num}, Load/Store FU: {self.load_store_FU}, Cycles: {self.load_store_cycles}, Mem Cycles: {self.load_store_mem_cycles}")
-        self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU, cycles_per_instruction=self.load_store_cycles,load_store_address_calc = self.load_store_cycles, memory = self.MEM)
+        self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU, cycles_per_instruction=self.load_store_mem_cycles,load_store_address_calc = self.load_store_cycles, memory = self.MEM)
         self.fs_LS.add_op(("ld",rs_ld_op))
         self.fs_LS.add_op(("sd",rs_sd_op))
 
@@ -168,6 +168,9 @@ class Architecture:
 
         #temp SD value holder
         self.temp_SD_val = None
+        self.commit_clock = None
+        self.had_SD = None
+        #self.last_SD_instruction  = None
         # Halt
         self.halt = False
 
@@ -330,6 +333,7 @@ class Architecture:
                 #this already works for load
                 if check == "sd":
                     self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock,current_instruction.dest))
+                    print(f"CS2:{self.fs_LS.cycles_per_instruction}")
                 else:
                     self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock))
 
@@ -421,6 +425,7 @@ class Architecture:
                 rs_unit.cycles_left -= 1
                 
                 if rs_unit.opcode == "ld":
+
                     if rs_unit.cycles_left == rs_table.cycles_per_instruction:
                         if instr_ref and instr_ref.mem_cycle_start is None:
                             instr_ref.mem_cycle_start = self.clock + 1
@@ -480,7 +485,7 @@ class Architecture:
 
                         self.halt = False  # unfreeze issue/fetch if you halted on branch issue
                         # remove the branch RS entry now that it’s resolved
-                        rs_table.table.remove(rs_unit)
+                        #rs_table.table.remove(rs_unit)
                         print(f"[BRANCH] Resolved: offset={off}, new PC={self.PC}, old PC={oldPC}")
 
                 # could be buffered but we are just leaving this for write back stage to handle
@@ -567,13 +572,23 @@ class Architecture:
     # TODO : Implement commit logic to use head and tail logic as per ROB design in class
     def commit(self):
         SD_count = 0
+
+        #one case is where the first sd will shift the commit clock cyle and another is where there are mulitple stores in a row
+        if (self.had_SD is not None and self.clock < self.commit_clock) or (self.had_SD is not None and self.previous_ROB == "sd"):
+            pass
+        else:
+            self.commit_clock = self.clock
+        
+
         if self.ROB.getEntries() > 0:
             #Peak the front
             addr, (alias, value, done, instr_ref) = self.ROB.peek()
             print(f"INSTRUCTION REF {instr_ref}")
             print(f"[COMMIT] Checking ROB entry {addr} and clearing from ROB: alias={alias}, value={value}, done={done}")
             if done == True:
-
+                
+                self.previous_ROB = instr_ref.opcode
+                print(f"previous ROB: {self.previous_ROB}")
                 addr = self.ROB.find_by_alias(alias)
                 print(f"[COMMIT] Committing {value} to {alias} from {addr}")
                 
@@ -586,9 +601,21 @@ class Architecture:
 
 
                 if instr_ref.opcode == "sd":
+                    
+                    self.had_SD =  True
+                    #self.previous_ROB = instr_ref.opcode
+
+                    self.commit_clock  = self.clock
                     if instr_ref and instr_ref.commit_cycle is None:
-                        instr_ref.commit_cycle = self.clock
-                        instr_ref.commit_cycle_SD = self.clock + self.fs_LS.cycles_per_instruction
+            
+                        print(f"Commit CLOCK: {self.commit_clock}")
+                        print(f"normal clock: {self.clock}")
+                        instr_ref.commit_cycle = self.commit_clock - 1
+                        
+                        instr_ref.commit_cycle_SD = instr_ref.commit_cycle + self.fs_LS.cycles_per_instruction - 1
+                        
+                        self.commit_clock = instr_ref.commit_cycle_SD
+                    
                     
                     #for now just code in the mem write
                     #need address + value
@@ -599,16 +626,12 @@ class Architecture:
                     self.MEM.write(value,self.temp_SD_val)
         
 
-                else:
-                    if self.previous_ROB == "sd":
+                else:         
                         if instr_ref and instr_ref.commit_cycle is None:
-                            instr_ref.commit_cycle = self.clock + self.fs_LS.cycles_per_instruction - 1
-                    else:
-                        if instr_ref and instr_ref.commit_cycle is None:
-                            instr_ref.commit_cycle = self.clock
-                    
-                if instr_ref.opcode == "sd":
-                    self.previous_ROB = instr_ref.opcode
+                            instr_ref.commit_cycle = self.commit_clock
+                            print(f"Commit CLOCK: {self.commit_clock}")
+               
+                #self.previous_ROB = instr_ref.opcode
 
                 # Update RAT to point back to ARF if it still points to this ROB entry
                 if self.RAT.read(alias) == addr:
