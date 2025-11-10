@@ -330,7 +330,7 @@ class Architecture:
 
             elif (check == "Beq" or check == "Bne"):
                 # Ignore the next fetch until the Bne is done
-                halt = True
+                #halt = True
 
                 # Branch predication will be here
                 self.fs_branch.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
@@ -338,19 +338,24 @@ class Architecture:
                 print(f"[DEBUG] Testing if branch gets to here {self.fs_branch}")
 
                 # add to the btb
-                self.BTB.add_branch(self.PC-0x4, current_instruction.offset)
-                print(f"PC : {self.PC}")
-                print("[BRANCH] Printing BTB ")
-                print(self.BTB)
+                if self.BTB.find_prediction(self.PC-0x4) is None:
+                    self.BTB.add_branch(self.PC-0x4, current_instruction.offset)
+                    print(f"PC : {self.PC}")
+                    print("[BRANCH] Printing BTB ")
+                    print(self.BTB)
+                    
+                current_predication = self.BTB.find_prediction(self.PC-0x4)
 
                 # save all the main data structures to allow for a system save point
-                print(f"[DEBUG] Saving all the data here!")
-                self.branch_CDB = self.CDB
-                self.branch_ROB = self.ROB
-                self.branch_ARF = self.ARF
-                self.branch_RAT = self.RAT
-                self.branch_all_rs_tables = self.all_rs_tables
-
+                if current_predication == True:
+                    print(f"[DEBUG] Saving all the data here!")
+                    self.branch_CDB = self.CDB
+                    self.branch_ROB = self.ROB
+                    self.branch_ARF = self.ARF
+                    self.branch_RAT = self.RAT
+                    self.branch_all_rs_tables = self.all_rs_tables
+                else:
+                    halt = True
             else:
                 #stall due to full RS
                 #if no conditions are satisified, it must mean the targeted RS is full
@@ -444,6 +449,8 @@ class Architecture:
                     # Prefer the computed value (offset if taken, else 0)
                     off = rs_unit.branch_offset
                     print(f"[BRANCH] Dst {rs_unit.DST_value}")
+                    # handle the prediction
+
                     if rs_unit.DST_value:
                         if isinstance(off, str):
                             off = int(off, 16) if off.lower().startswith("0x") else int(off)
