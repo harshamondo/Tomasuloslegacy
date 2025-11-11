@@ -170,6 +170,7 @@ class Architecture:
         self.temp_SD_val = None
         self.commit_clock = None
         self.had_SD = None
+        self.store_load_forward = None
         #self.last_SD_instruction  = None
         # Halt
         self.halt = False
@@ -370,7 +371,7 @@ class Architecture:
     # Execute helper functions
     def parse_rs_table(self, rs_table: RS_Table):
         # print(f"[EXECUTE] Parsing RS Table: {rs_table.type}")
-        for rs_unit in rs_table.table:
+        for index,rs_unit in enumerate(rs_table.table):
             # Skip empty slots (if your RS uses opcode)
             print(f"[EXECUTE] RS Table {rs_table.type}")
             #print(f"[EXECUTE] RS Unit {rs_unit}")
@@ -429,6 +430,7 @@ class Architecture:
                     if rs_unit.cycles_left == rs_table.cycles_per_instruction:
                         if instr_ref and instr_ref.mem_cycle_start is None:
                             instr_ref.mem_cycle_start = self.clock + 1
+
                     
                         if instr_ref and instr_ref.execute_end_cycle is None:
                             instr_ref.execute_end_cycle = self.clock
@@ -460,12 +462,33 @@ class Architecture:
                 
                 #roshan
                 instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
+                
+                #load/store forwarding
+                #rs_table.table contains all RS entries in a specific RS(int add, fp add, ..etc)
+                #rs_unit is a specific index in that table
+                if rs_unit.opcode == "ld":
+                    
+                    for i in range(index, -1, -1):
+                        #a older RS queue entry's target address matches the ld's target address
+                        if rs_table.table[i].DST_value == rs_unit.DST_value:
+                            #self.ARF.write(rs_unit.DST_tag,self.ARF.read(rs_table.table[i].DST_tag))
+
+                            #print(f"DEBUG: {rs_unit.DST_tag}")
+                            #print(f"DEBUG: {self.ARF.read(rs_table.table[i].DST_tag)}")
+                            instr_ref.mem_cycle_end = instr_ref.mem_cycle_start      
+                            instr_ref.LD_SD_forward = True  
 
                 if rs_unit.opcode == "sd":
+                    #sd has no WB
                     pass
                 else:
                     if instr_ref:
-                        instr_ref.write_back_cycle = self.clock
+
+                        if instr_ref.opcode == "ld" and instr_ref.LD_SD_forward == True:
+                            instr_ref.write_back_cycle = instr_ref.mem_cycle_end + 1
+                        else:
+                            instr_ref.write_back_cycle = self.clock
+                        
 
                 # Handle branches here
 
@@ -573,8 +596,9 @@ class Architecture:
     def commit(self):
         SD_count = 0
 
-        #one case is where the first sd will shift the commit clock cyle and another is where there are mulitple stores in a row
-        if (self.had_SD is not None and self.clock < self.commit_clock) or (self.had_SD is not None and self.previous_ROB == "sd"):
+        #one case is where the first sd will dialign the commit clk with the system clk (this can only happen once) and another is where there are mulitple stores in a row
+        #else: commit clock will just follow system clock (No stores have happened)
+        if (self.had_SD is not None and self.clock < self.commit_clock) or (self.previous_ROB == "sd"):
             pass
         else:
             self.commit_clock = self.clock
@@ -592,28 +616,29 @@ class Architecture:
                 addr = self.ROB.find_by_alias(alias)
                 print(f"[COMMIT] Committing {value} to {alias} from {addr}")
                 
+
+                #must make sure ROB matches??
                 if instr_ref.opcode == "ld":
+
                     #value should be address of memory
-                    temp_val = self.MEM.read(value)
-                    self.ARF.write(alias,temp_val)
+                    if instr_ref.LD_SD_forward is not None:
+                        self.ARF.write(alias,self.temp_SD_val)
+                    else:
+                        temp_val = self.MEM.read(value)
+                        self.ARF.write(alias,temp_val)
                 else:
                     self.ARF.write(alias, value)
 
 
                 if instr_ref.opcode == "sd":
                     
-                    self.had_SD =  True
-                    #self.previous_ROB = instr_ref.opcode
+                    self.had_SD = True
 
-                    self.commit_clock  = self.clock
                     if instr_ref and instr_ref.commit_cycle is None:
             
-                        print(f"Commit CLOCK: {self.commit_clock}")
-                        print(f"normal clock: {self.clock}")
-                        instr_ref.commit_cycle = self.commit_clock - 1
-                        
+                        #Base commit stage off commit_clock
+                        instr_ref.commit_cycle = self.commit_clock
                         instr_ref.commit_cycle_SD = instr_ref.commit_cycle + self.fs_LS.cycles_per_instruction - 1
-                        
                         self.commit_clock = instr_ref.commit_cycle_SD
                     
                     
@@ -629,7 +654,6 @@ class Architecture:
                 else:         
                         if instr_ref and instr_ref.commit_cycle is None:
                             instr_ref.commit_cycle = self.commit_clock
-                            print(f"Commit CLOCK: {self.commit_clock}")
                
                 #self.previous_ROB = instr_ref.opcode
 

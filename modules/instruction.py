@@ -29,6 +29,8 @@ class Instruction:
 
 		self.SD_val = None
 
+		self.LD_SD_forward = None
+
 		# Parse operands for specific opcodes
 		if opcode is not None and operands is not None:
 			op = opcode.lower()

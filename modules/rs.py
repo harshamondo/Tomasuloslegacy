@@ -18,6 +18,8 @@ class RS_Unit:
             self.value1 = None
             self.value2 = None
 
+            self.LD_SD_Forward = None
+
             #potentially for ld/sd
             self.offset = reg1
 
