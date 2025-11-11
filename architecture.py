@@ -8,13 +8,22 @@ from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op, rs_fp_mul_
 
 from modules.arf import ARF
 from modules.rat import RAT
-from modules.helper import arf_from_csv, is_arf, rat_from_csv, init_ARF_RAT
+from modules.helper import arf_from_csv, is_arf, rat_from_csv, init_ARF_RAT, _to_int_addr
 from pathlib import Path
 from default_generator.rat_arf_gen import print_file_arf, print_file_rat
 from modules.btb import BTB
 
 # Overall class that determines the architecture of the CPU
 class Architecture:
+    # Stupid helper functions to force PC into an int, python let me declare my variables you menace!
+    @property
+    def PC(self) -> int:
+        return self._pc
+
+    @PC.setter
+    def PC(self, value):
+        self._pc = _to_int_addr(value)  # coercion & guarantee
+
     def __init__(self,filename = None):
         self.filename = filename
         self.config = "config.csv"
@@ -332,30 +341,36 @@ class Architecture:
                 # Ignore the next fetch until the Bne is done
                 #halt = True
 
-                # Branch predication will be here
+                # Branch will be here
                 self.fs_branch.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
                 self.fs_branch.set_branch_offset(0, current_instruction.offset)
                 print(f"[DEBUG] Testing if branch gets to here {self.fs_branch}")
 
+                # Branch prediction will be below
                 # add to the btb
                 if self.BTB.find_prediction(self.PC-0x4) is None:
+                    print(f"[BRANCH] New Entry")
                     self.BTB.add_branch(self.PC-0x4, current_instruction.offset)
-                    print(f"PC : {self.PC}")
-                    print("[BRANCH] Printing BTB ")
-                    print(self.BTB)
                     
                 current_predication = self.BTB.find_prediction(self.PC-0x4)
 
-                # save all the main data structures to allow for a system save point
+                print(f"[BRANCH] PC : {self.PC-0x4}")
+                print("[BRANCH] Printing BTB ")
+                print(self.BTB)
+
+                # save all the main data structures to allow for a system save point\
+                print(f"[DEBUG] Saving all the data here!")
+                self.branch_CDB = self.CDB
+                self.branch_ROB = self.ROB
+                self.branch_ARF = self.ARF
+                self.branch_RAT = self.RAT
+                self.branch_all_rs_tables = self.all_rs_tables
+
                 if current_predication == True:
-                    print(f"[DEBUG] Saving all the data here!")
-                    self.branch_CDB = self.CDB
-                    self.branch_ROB = self.ROB
-                    self.branch_ARF = self.ARF
-                    self.branch_RAT = self.RAT
-                    self.branch_all_rs_tables = self.all_rs_tables
-                else:
-                    halt = True
+                    self.PC = self.BTB.get_target(self.PC-0x4)
+
+                print(f"[BRANCH] Info dump target - target {self.BTB.get_target(self.PC-0x4)} and current prediction | predicted_taken={bool(current_predication)}")
+
             else:
                 #stall due to full RS
                 #if no conditions are satisified, it must mean the targeted RS is full
@@ -404,8 +419,8 @@ class Architecture:
                 rs_unit.cycles_left = rs_table.cycles_per_instruction
                 
                 #roshan
-                print(f"CLOCK CYCLE CHECKER: {instr_ref.issue_cycle}")
-                print(f"CLOCK CYCLE CHECKER: {self.clock}")
+                # print(f"CLOCK CYCLE CHECKER: {instr_ref.issue_cycle}")
+                # print(f"CLOCK CYCLE CHECKER: {self.clock}")
     
                 if instr_ref and instr_ref.execute_start_cycle is None:
                     if instr_ref.issue_cycle  - self.clock == 0:
@@ -449,7 +464,12 @@ class Architecture:
                     # Prefer the computed value (offset if taken, else 0)
                     off = rs_unit.branch_offset
                     print(f"[BRANCH] Dst {rs_unit.DST_value}")
+
                     # handle the prediction
+                    current_predication = self.BTB.find_prediction(self.PC-0x4)
+                    if current_predication != rs_unit.DST_value:
+                        print(f"[BRANCH] Mistook the branch, updating prediction to {rs_unit.DST_value}")
+                        self.BTB.change_prediction(self.PC-0x4, rs_unit.DST_value)
 
                     if rs_unit.DST_value:
                         if isinstance(off, str):
@@ -457,7 +477,7 @@ class Architecture:
 
                         oldPC = self.PC
                         # New PC
-                        self.PC = off 
+                        self.PC = off
 
                         self.halt = False  # unfreeze issue/fetch if you halted on branch issue
                         # remove the branch RS entry now that it’s resolved

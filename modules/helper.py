@@ -69,3 +69,11 @@ def init_ARF_RAT(self):
         for i in range(1,33):
              self.ARF.write("F" + str(i),0)
              self.RAT.write("F" + str(i),"ARF" + str(i+32))
+
+def _to_int_addr(v):
+    if isinstance(v, int):
+        return v
+    if isinstance(v, str):
+        # Accept "0x1c", "034", or "28"
+        return int(v, 0)
+    raise TypeError(f"PC must be int or str, got {type(v).__name__}")
