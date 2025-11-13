@@ -49,6 +49,7 @@ class Architecture:
         self.load_store_rs_num = 3
 
         self.clock = 1
+        self.act_PC = 0x0
         self.PC = 0x0
 
         #parsing code to set the number of functional units and reservation stations will go here
@@ -118,7 +119,7 @@ class Architecture:
         self.fs_int_adder.add_op( ("Addi", rs_int_addi_op) )
         
         # Execution step is only 1 step, there should not be extra rs_units and there isn't really functional units for this branch
-        self.fs_branch = RS_Table(type="fs_branch", num_rs_units=1, num_FU_units=1, cycles_per_instruction=1)
+        self.fs_branch = RS_Table(type="fs_branch", num_rs_units=1, num_FU_units=1, cycles_per_instruction=0)
         self.fs_branch.add_op( ("Bne", rs_branch_bne))
         self.fs_branch.add_op( ("Beq", rs_branch_beq))
 
@@ -168,8 +169,11 @@ class Architecture:
         self.CDB = deque()
 
         # Halt
-        self.halt = False
+        self.halt = False # just for branch solo
         self.BTB = BTB()
+
+        # Pause for reset
+        self.pause_for_reset = False
 
         # Create all the savepoint datastructures here
         self.branch_CDB = None
@@ -243,12 +247,20 @@ class Architecture:
         if instr is None:
             return None
         self.PC += 0x4
+        self.act_PC = self.PC-0x4 # this is the actual PC during the code execution
         return instr
 
     def has_next(self):
         return int(self.PC <= self.max_pc)
 
     def issue(self):
+        print(f"[DEBUG] Saving all the data here!")
+        self.branch_CDB = self.CDB
+        self.branch_ROB = self.ROB
+        self.branch_ARF = self.ARF
+        self.branch_RAT = self.RAT
+        self.branch_all_rs_tables = self.all_rs_tables
+
         #add instructions into the RS if not full
         #think about how we are going to stall
         #ask prof if we need to have official states like fetch and decode since our instruction class already handles fetch+decode
@@ -348,13 +360,13 @@ class Architecture:
 
                 # Branch prediction will be below
                 # add to the btb
-                if self.BTB.find_prediction(self.PC-0x4) is None:
+                if self.BTB.find_prediction(self.act_PC) is None:
                     print(f"[BRANCH] New Entry")
-                    self.BTB.add_branch(self.PC-0x4, current_instruction.offset)
+                    self.BTB.add_branch(self.act_PC, current_instruction.offset)
                     
-                current_predication = self.BTB.find_prediction(self.PC-0x4)
+                current_predication = self.BTB.find_prediction(self.act_PC)
 
-                print(f"[BRANCH] PC : {self.PC-0x4}")
+                print(f"[BRANCH] PC : {self.act_PC}")
                 print("[BRANCH] Printing BTB ")
                 print(self.BTB)
 
@@ -367,13 +379,14 @@ class Architecture:
                 self.branch_all_rs_tables = self.all_rs_tables
 
                 if current_predication == True:
-                    self.PC = self.BTB.get_target(self.PC-0x4)
+                    self.PC = self.BTB.get_target(self.act_PC)
 
-                print(f"[BRANCH] Info dump target - target {self.BTB.get_target(self.PC-0x4)} and current prediction | predicted_taken={bool(current_predication)}")
+                print(f"[BRANCH] Info dump target - target {self.BTB.get_target(self.act_PC)} and current prediction | predicted_taken={bool(current_predication)}")
 
             else:
                 #stall due to full RS
                 #if no conditions are satisified, it must mean the targeted RS is full
+                #this is not necessary, legacy
                 pass
 
             # We will also be read naming but we shouldn't read until we read from the right registers
@@ -386,6 +399,8 @@ class Architecture:
             self.RAT.write(current_instruction.dest, current_ROB)
 
             self.instruction_pointer += 1
+
+
 
     # EXECUTE --------------------------------------------------------------
     # Checks the reservation stations for ready instructions, if they are ready, executes them
@@ -407,7 +422,51 @@ class Architecture:
             # Start execution if operands ready, not already executing, and FU available
             print(f"LOOT: value1 = {rs_unit.value1}, value2 = {rs_unit.value2}, cycles_left = {rs_unit.cycles_left}, busy units = {rs_table.busy_FU_units}, num units = {rs_table.num_FU_units}")
             instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
-            if (
+
+            # Branch starts here
+            if (rs_unit.value1 is not None
+                and rs_unit.value2 is not None
+                and rs_table.type == "fs_branch"):
+                # could be buffered but we are just leaving this for write back stage to handle
+                # Handle branches here
+                # Prefer the computed value (offset if taken, else 0)
+                rs_unit.DST_value = rs_table.compute(rs_unit)
+                print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
+
+                rs_unit.cycles_left = rs_table.cycles_per_instruction
+                print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2} for {rs_table.cycles_per_instruction} cycles.")
+                off = rs_unit.branch_offset
+                print(f"[BRANCH] Dst {rs_unit.DST_value}")
+
+                # handle the prediction
+                current_predication = self.BTB.find_prediction(self.act_PC)
+                if current_predication != rs_unit.DST_value:
+                    print(f"[BRANCH] Mistook the branch, updating prediction to {rs_unit.DST_value}")
+                    
+                    # reset all the structures
+                    self.CDB = self.branch_CDB
+                    self.ROB = self.branch_ROB
+                    self.ARF = self.branch_ARF
+                    self.RAT = self.branch_RAT
+                    self.all_rs_tables = self.branch_all_rs_tables
+
+                    self.BTB.change_prediction(self.act_PC, rs_unit.DST_value)
+                    self.PC = self.BTB.get_target(self.act_PC)
+                    self.pause_for_reset = True
+
+                # if rs_unit.DST_value:
+                #     if isinstance(off, str):
+                #         off = int(off, 16) if off.lower().startswith("0x") else int(off)
+
+                #     oldPC = self.PC
+                #     # New PC
+                #     self.PC = off
+
+                #     self.halt = False  # unfreeze issue/fetch if you halted on branch issue
+                #     # remove the branch RS entry now that it’s resolved
+                #     # rs_table.table.remove(rs_unit)
+                #     print(f"[BRANCH] Resolved: offset={off}, new PC={self.PC}, old PC={oldPC}")
+            elif (
                 rs_unit.value1 is not None
                 and rs_unit.value2 is not None
                 and rs_unit.cycles_left is None
@@ -456,39 +515,6 @@ class Architecture:
                 if instr_ref:
                     instr_ref.write_back_cycle = self.clock
 
-                # Handle branches here
-
-                # could be buffered but we are just leaving this for write back stage to handle
-                # Handle branches here
-                if rs_table.type == "fs_branch":
-                    # Prefer the computed value (offset if taken, else 0)
-                    off = rs_unit.branch_offset
-                    print(f"[BRANCH] Dst {rs_unit.DST_value}")
-
-                    # handle the prediction
-                    current_predication = self.BTB.find_prediction(self.PC-0x4)
-                    if current_predication != rs_unit.DST_value:
-                        print(f"[BRANCH] Mistook the branch, updating prediction to {rs_unit.DST_value}")
-                        self.BTB.change_prediction(self.PC-0x4, rs_unit.DST_value)
-
-                    if rs_unit.DST_value:
-                        if isinstance(off, str):
-                            off = int(off, 16) if off.lower().startswith("0x") else int(off)
-
-                        oldPC = self.PC
-                        # New PC
-                        self.PC = off
-
-                        self.halt = False  # unfreeze issue/fetch if you halted on branch issue
-                        # remove the branch RS entry now that it’s resolved
-                        # rs_table.table.remove(rs_unit)
-                        print(f"[BRANCH] Resolved: offset={off}, new PC={self.PC}, old PC={oldPC}")
-
-                # could be buffered but we are just leaving this for write back stage to handle
-                # rs_unit.value1 = None
-                # rs_unit.value2 = None
-                # print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_unit.DST_value}")
-
         # Release all FU units at the end of execution phase since they are pipelined and get freed up for next cycle
         rs_table.release_all_fu_units()
 
@@ -500,6 +526,10 @@ class Architecture:
     # WRITE BACK --------------------------------------------------------------
     # Helper function for write back
     def write_back(self):
+        # if self.pause_for_reset is True:
+        #     print("[WRITE BACK] Skipping...")
+        #     return
+
         print("[WRITE BACK] Checking RS Units for write back...")
         # First handle the outputs from the reservation stations
         for rs_table in self.all_rs_tables:
@@ -558,6 +588,42 @@ class Architecture:
     # COMMIT --------------------------------------------------------------
     # TODO : Implement commit logic to use head and tail logic as per ROB design in class
     def commit(self):
+        if self.pause_for_reset is True:
+            addr, (alias, value, done, instr_ref) = self.ROB.peek()
+
+            print("[COMMIT] Skipping... well kinda?")
+            # Set to true if it has a value for all of them
+            for i in range(1, self.ROB.max_entries + 1):
+                rob_entry_key = "ROB" + str(i)
+                rob_entry = self.ROB.read(rob_entry_key)
+                # make sure the key is clean
+                if rob_entry is not None:
+                    # pull values
+                    alias, value, done, instr_ref = rob_entry
+                    print(f"[COMMIT] Checking ROB entry {rob_entry_key}: alias={alias}, value={value}, done={done}")
+                    if value is not None and done is not True:
+                        print(f"[COMMIT] Waiting 1 cycle to commit {value} to {alias} from {rob_entry_key}")
+                        self.ROB.update_done(rob_entry_key, True)
+
+            print(f"[COMMIT] Checking ROB entry {addr} and clearing from ROB: alias={alias}, value={value}, done={done}")
+            if done == True:
+                addr = self.ROB.find_by_alias(alias)
+                print(f"[COMMIT] Committing {value} to {alias} from {addr}")
+                self.ARF.write(alias, value)
+                if instr_ref and instr_ref.commit_cycle is None:
+                    instr_ref.commit_cycle = self.clock
+
+                # Update RAT to point back to ARF if it still points to this ROB entry
+                if self.RAT.read(alias) == addr:
+                    self.RAT.write(alias, "ARF" + str(int(alias[1:]) + 32))  
+                # Clear the ROB entry
+                self.ROB.clear(addr)
+                # Only commit one instruction per cycle
+
+            # No more pausing for this cycle. Should issue correctly starting the next cycle
+            self.pause_for_reset = False
+            return
+
         if self.ROB.getEntries() > 0:
             # Peak the front
 
