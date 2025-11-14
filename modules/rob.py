@@ -69,7 +69,7 @@ class ROB:
             #alias, _, done = self.data[address]
             #self.data[address] = alias, value, done
 
-    def update(self, alias, value, done=False):
+    def update(self, alias, value, sd_value = None ,done=False):
         entry = self.data.get(alias)
         if entry:
             #Preserve the instruction reference (instr_ref) when updating.

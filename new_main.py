@@ -49,16 +49,19 @@ def check_init():
     #loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
     #loot = Architecture("instruction_sets/instructions.txt")
     #loot = Architecture("instruction_sets/load_store_test.txt")
-    loot = Architecture("instruction_sets/load_store_forwarding.txt")
+    #loot = Architecture("instruction_sets/load_store_forwarding.txt")
+    loot = Architecture("instruction_sets/load_store_memory.txt")
     
     print("Initial ARF and RAT contents:")
     # print_ARF_RAT(loot)
-    total_cycles = 30
+    total_cycles = 15
 
     print(f"Current PC: {loot.PC}")
     for i in range(1,total_cycles):
         print("----------------Issuing cycle number:", loot.clock)
         print(f"Current PC: 0x{loot.PC}")
+        
+        print(f"TRACKING R2: {loot.ARF.read("R2")}")
         loot.issue()
         loot.execute()
         loot.write_back()
@@ -74,7 +77,7 @@ def check_init():
 
     print_timing_table(loot.instructions_in_flight) 
     #for store word test
-    print(loot.MEM.read(34))
+    print(loot.MEM.read(25))
 
 # Don't use this, use the correct __name__ guard below
 def main():

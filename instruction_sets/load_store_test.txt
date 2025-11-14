@@ -1,4 +1,1 @@
-sd F2 , 0(R2)
-sd F3, 0(R8)
-sd F6, 0(R8)
-Add R5, R3, R4
+sd R2, 0(R3)

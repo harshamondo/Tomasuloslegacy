@@ -39,7 +39,7 @@ class RS_Unit:
             self.ARF = ARF_object
 
             self.SD_dest = SD_dest
-
+            self.instr_ref = None
             # We should just assign the value? No need to read
             #self.DST_tag = RAT_object.read(DST_tag)
             self.DST_tag = DST_tag
@@ -80,6 +80,9 @@ class RS_Unit:
                   f"tag1={self.tag1}, tag2={self.tag2}, value1={self.value1}, value2={self.value2}),"
                   f"cycles_left={self.cycles_left}, cycle_issued={self.cycle_issued}, written_back={self.written_back}"
                   f", branch_offset={self.branch_offset}")
+      def add_instr_ref(self,instr_ref):
+            self.instr_ref = instr_ref
+
 
 # Reservation Station Table - holds multiple RS_Unit objects
 # Type indicates the type of functional unit it is associated with (e.g., Integer Adder, FP Adder, Multiplier, Load/Store)
