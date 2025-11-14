@@ -4,7 +4,7 @@ class ROB:
         self.entries = 0
         self.head = 0
         self.tail = 0
-        self.max_entries = 16 
+        self.max_entries = 16
       
     def read(self, address):
         return self.data.get(address, None)
@@ -69,7 +69,7 @@ class ROB:
             #alias, _, done = self.data[address]
             #self.data[address] = alias, value, done
 
-    def update(self, alias, value, done=False):
+    def update(self, alias, value, sd_value = None ,done=False):
         entry = self.data.get(alias)
         if entry:
             #Preserve the instruction reference (instr_ref) when updating.

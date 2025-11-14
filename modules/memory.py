@@ -10,11 +10,7 @@ class memory:
         
     def clear(self,address):
         self.data.pop(address, None)
-        self.entries -= 1
     
-    def adder(self):
-        pass
-
     def __str__(self):
         return f"ARF(Rdata={self.R_type})"
     

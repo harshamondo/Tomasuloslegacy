@@ -20,6 +20,17 @@ class Instruction:
 		self.write_back_cycle = None
 		self.commit_cycle = None
 
+		#ONLY LD
+		self.mem_cycle_start = None
+		self.mem_cycle_end = None
+
+		#ONLY SD
+		self.commit_cycle_SD = None
+
+		self.SD_val = None
+
+		self.LD_SD_forward = None
+
 		# Parse operands for specific opcodes
 		if opcode is not None and operands is not None:
 			op = opcode.lower()

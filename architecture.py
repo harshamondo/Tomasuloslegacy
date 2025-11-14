@@ -4,10 +4,11 @@ import csv
 
 from modules.instruction import Instruction
 from modules.rob import ROB
-from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op, rs_fp_mul_op, rs_int_add_op, rs_int_sub_op, rs_int_addi_op, rs_branch_bne, rs_branch_beq
+from modules.rs import RS_Unit, RS_Table, rs_fp_add_op, rs_fp_sub_op, rs_fp_mul_op, rs_int_add_op, rs_int_sub_op, rs_int_addi_op, rs_branch_bne, rs_branch_beq, rs_sd_op,rs_ld_op
 
 from modules.arf import ARF
 from modules.rat import RAT
+from modules.memory import memory
 from modules.helper import arf_from_csv, is_arf, rat_from_csv, init_ARF_RAT
 from pathlib import Path
 from default_generator.rat_arf_gen import print_file_arf, print_file_rat
@@ -41,7 +42,16 @@ class Architecture:
         self.clock = 1
         self.PC = 0x0
 
+        self.previous_ROB = None
         #parsing code to set the number of functional units and reservation stations will go here
+
+        #memory must be initiialized before all the RS tables
+        #Can add way to parse a config for default memory addresses and values
+        self.MEM = memory()
+        self.MEM.write(44,21)
+        self.MEM.write(39,21)
+        self.MEM.write(25,40)
+
         with open(self.config, newline='') as f:
             reader = csv.DictReader(f)
 
@@ -93,9 +103,10 @@ class Architecture:
 
         # TODO : Initialize other RS_Tables for multiplier, integer adder, load/store with respective functions
         print(f"Load/Store RS Num: {self.load_store_rs_num}, Load/Store FU: {self.load_store_FU}, Cycles: {self.load_store_cycles}, Mem Cycles: {self.load_store_mem_cycles}")
-        self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU, cycles_per_instruction=self.load_store_cycles)
-        self.fs_LS.add_op(("Add",rs_int_add_op))
-        
+        self.fs_LS = RS_Table(type="fs_fp_ls", num_rs_units=self.load_store_rs_num, num_FU_units=self.load_store_FU, cycles_per_instruction=self.load_store_mem_cycles,load_store_address_calc = self.load_store_cycles, memory = self.MEM)
+        self.fs_LS.add_op(("ld",rs_ld_op))
+        self.fs_LS.add_op(("sd",rs_sd_op))
+
         #there are two cycles, one for calculating address (adder), and ld's time spent in memory
         print(f"Multiplier RS Num: {self.multiplier_rs_num}, Multiplier FU: {self.multiplier_FU}, Cycles: {self.multiplier_cycles}, Mem Cycles: {self.multiplier_mem_cycles}")
         self.fs_mult = RS_Table(type="fs_fp_mult", num_rs_units=self.multiplier_rs_num, num_FU_units=self.multiplier_FU, cycles_per_instruction=self.multiplier_cycles)
@@ -157,6 +168,12 @@ class Architecture:
         # Queue for the CDB
         self.CDB = deque()
 
+        #temp SD value holder
+        self.temp_SD_val = None
+        self.commit_clock = None
+        self.had_SD = None
+        self.store_load_forward = None
+        #self.last_SD_instruction  = None
         # Halt
         self.halt = False
 
@@ -279,7 +296,7 @@ class Architecture:
             #print(f"[ISSUE] int_adder_rs_num: {self.int_adder_rs_num}, fs_int_adder.table size: {self.fs_fp_add.length()}")
             for rs_table in self.all_rs_tables:
                 rs_table.print_rs_without_intermediates()
-            print(f"[ISSUE] Issuing instruction: {current_instruction}")
+            print(f"[ISSUE] Issuing instruction: {current_instruction.opcode}")
 
             # Grab the opcode
             check = current_instruction.opcode
@@ -289,8 +306,13 @@ class Architecture:
             #add to ROB and RAT regardless if we must wait for RS space
             #TODO  the register rename doesn't seem to account for the size of the ROB, absolutely needs to be fixed!
             #TODO  we write to the ROB(X) and the search to see if the value exists. this is poor implementation
+            
+            #if current_instruction.opcode == "sd":
+                #pass
+            #else:
             current_ROB = "ROB" + str(self.ROB.getEntries()+1)
             current_instruction.rob_tag = current_ROB
+
             #check for space in RS
             #have to add tables for mult, and ld/store
             print(f"[ISSUE] Check: {check}")
@@ -312,9 +334,13 @@ class Architecture:
             elif (check == "Mult.d") and self.fs_mult.length() < self.multiplier_rs_num:
                 self.fs_mult.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
 
-            elif (check == "Sd" or check == "Ld") and self.fs_LS.length() < self.load_store_rs_num:
+            elif (check == "sd" or check == "ld") and self.fs_LS.length() < self.load_store_rs_num:
                 print("[ISSUE] Added ld or sd")
-                self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock))
+                #this already works for load
+                if check == "sd":
+                    self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock,current_instruction.dest))
+                else:
+                    self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock))
 
             elif (check == "Beq" or check == "Bne"):
                 # Ignore the next fetch until the Bne is done
@@ -330,15 +356,20 @@ class Architecture:
                 #stall due to full RS
                 #if no conditions are satisified, it must mean the targeted RS is full
                 pass
-
+            
+            #if current_instruction.opcode != "sd":
             # We will also be read naming but we shouldn't read until we read from the right registers
             if (check == "Beq" or check == "Bne"):
                 #Change the ROB write
                 self.ROB.write(current_ROB, "Branch", None, False)
             else:
-                self.ROB.write(current_ROB, current_instruction.dest, None, False,current_instruction)
+                self.ROB.write(current_ROB, current_instruction.dest, None, False, current_instruction)
 
-            self.RAT.write(current_instruction.dest, current_ROB)
+            #sd does not actually need a ROB entry, but we will use it to commit on time
+            if current_instruction.opcode == "sd":
+                pass
+            else:
+                self.RAT.write(current_instruction.dest, current_ROB)
 
             self.instruction_pointer += 1
 
@@ -349,7 +380,7 @@ class Architecture:
     # Execute helper functions
     def parse_rs_table(self, rs_table: RS_Table):
         # print(f"[EXECUTE] Parsing RS Table: {rs_table.type}")
-        for rs_unit in rs_table.table:
+        for index,rs_unit in enumerate(rs_table.table):
             # Skip empty slots (if your RS uses opcode)
             print(f"[EXECUTE] RS Table {rs_table.type}")
             #print(f"[EXECUTE] RS Unit {rs_unit}")
@@ -362,26 +393,35 @@ class Architecture:
             # Start execution if operands ready, not already executing, and FU available
             print(f"LOOT: value1 = {rs_unit.value1}, value2 = {rs_unit.value2}, cycles_left = {rs_unit.cycles_left}, busy units = {rs_table.busy_FU_units}, num units = {rs_table.num_FU_units}")
             instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
+
             if (
-                rs_unit.value1 is not None
-                and rs_unit.value2 is not None
-                and rs_unit.cycles_left is None
-                # TODO : Test Pipelined CPU - check for available FU units
-                and rs_table.busy_FU_units <= rs_table.num_FU_units 
+                rs_unit.value1 is not None and 
+                rs_unit.value2 is not None and 
+                rs_unit.cycles_left is None and 
+                rs_table.busy_FU_units < rs_table.num_FU_units and
+                (rs_unit.opcode != "sd" or rs_unit.SD_value is not None)#SD_value here is the value needed for address calculation
             ):
+
                 print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2} for {rs_table.cycles_per_instruction} cycles.")
                 
-                rs_unit.cycles_left = rs_table.cycles_per_instruction
+                if rs_unit.opcode == "ld":
+                    rs_unit.cycles_left = rs_table.cycles_in_ex_b4_mem + rs_table.cycles_per_instruction
+                elif rs_unit.opcode == "sd":
+                    rs_unit.cycles_left = rs_table.cycles_in_ex_b4_mem
+
+                    #we can just write to mem in this state not correct for the algorithm, but it is for si
+
+                else:
+                    rs_unit.cycles_left = rs_table.cycles_per_instruction
                 
                 #roshan
-                print(f"CLOCK CYCLE CHECKER: {instr_ref.issue_cycle}")
-                print(f"CLOCK CYCLE CHECKER: {self.clock}")
     
                 if instr_ref and instr_ref.execute_start_cycle is None:
-                    if instr_ref.issue_cycle  - self.clock == 0:
-                        instr_ref.execute_start_cycle = rs_unit.cycle_issued + 1
-                    else:
-                        instr_ref.execute_start_cycle = self.clock
+                    if instr_ref is not None:
+                        if instr_ref.issue_cycle  - self.clock == 0:
+                            instr_ref.execute_start_cycle = rs_unit.cycle_issued + 1
+                        else:
+                            instr_ref.execute_start_cycle = self.clock
 
                 if rs_unit.written_back == True:
                     rs_unit.written_back = False
@@ -389,27 +429,76 @@ class Architecture:
 
                 print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
                 rs_table.use_fu_unit()
+                print(f"CURRENT DEBUG{rs_table.busy_FU_units}")
 
             # Decrement remaining cycles if currently executing
             elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 1:
+                
                 rs_unit.cycles_left -= 1
+                
+                if rs_unit.opcode == "ld":
+
+                    if rs_unit.cycles_left == rs_table.cycles_per_instruction:
+                        if instr_ref and instr_ref.mem_cycle_start is None:
+                            instr_ref.mem_cycle_start = self.clock + 1
+
+                    
+                        if instr_ref and instr_ref.execute_end_cycle is None:
+                            instr_ref.execute_end_cycle = self.clock
+
+
                 print(f"[EXECUTE] RS Unit {rs_unit} has {rs_unit.cycles_left} cycles left.")
 
             elif rs_unit.cycles_left == 1:
                 rs_unit.cycles_left -= 1
                 print(f"[EXECUTE] Completed execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} with result {rs_table.compute(rs_unit)}")
                 #roshan
-                if instr_ref and instr_ref.execute_end_cycle is None:
-                    instr_ref.execute_end_cycle = self.clock 
+                if rs_unit.opcode == "ld":
+                    print(f"HERE")
+                    if instr_ref and instr_ref.mem_cycle_end is None:
+                        instr_ref.mem_cycle_end = self.clock 
+                else:
+                    if instr_ref and instr_ref.execute_end_cycle is None:
+                        instr_ref.execute_end_cycle = self.clock 
+
+
             # complete execution if cycles left is 0
             elif rs_unit.cycles_left == 0:
+
+                print()
                 rs_unit.DST_value = rs_table.compute(rs_unit)
                 print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
                 
                 #roshan
                 instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
-                if instr_ref:
-                    instr_ref.write_back_cycle = self.clock
+                
+                #load/store forwarding
+                #rs_table.table contains all RS entries in a specific RS(int add, fp add, ..etc)
+                #rs_unit is a specific index in that table
+                #if rs_unit.opcode == "ld":
+                    
+                    #for i in range(index, -1, -1):
+                        #a older RS queue entry's target address matches the ld's target address
+                        #if rs_table.table[i].DST_value == rs_unit.DST_value:
+                            #self.ARF.write(rs_unit.DST_tag,self.ARF.read(rs_table.table[i].DST_tag))
+
+                            #print(f"DEBUG: {rs_unit.DST_tag}")
+                            #print(f"DEBUG: {self.ARF.read(rs_table.table[i].DST_tag)}")
+                            #instr_ref.mem_cycle_end = instr_ref.mem_cycle_start      
+                            #instr_ref.LD_SD_forward = True  
+
+                if rs_unit.opcode == "sd":
+                    SD_res = self.ARF.read(rs_unit.SD_dest)
+                    self.MEM.write(rs_unit.DST_value,SD_res)
+                    #rs_unit.add_instr_ref(instr_ref)
+                else:
+                    if instr_ref:
+
+                        if instr_ref.opcode == "ld" and instr_ref.LD_SD_forward == True:
+                            instr_ref.write_back_cycle = instr_ref.mem_cycle_end + 1
+                        else:
+                            instr_ref.write_back_cycle = self.clock
+                        
 
                 # Handle branches here
 
@@ -429,7 +518,7 @@ class Architecture:
 
                         self.halt = False  # unfreeze issue/fetch if you halted on branch issue
                         # remove the branch RS entry now that it’s resolved
-                        rs_table.table.remove(rs_unit)
+                        #rs_table.table.remove(rs_unit)
                         print(f"[BRANCH] Resolved: offset={off}, new PC={self.PC}, old PC={oldPC}")
 
                 # could be buffered but we are just leaving this for write back stage to handle
@@ -443,21 +532,34 @@ class Architecture:
     def execute(self):
         # Execute logic for Floating Point Adder/Subtracter RS
         for rs_table in self.all_rs_tables:
+            print(f"SIZE OF ALL RS TABLES: {len(rs_table.table)}")
             self.parse_rs_table(rs_table)
+    def memory(self):
+        #this stage is only for ld
+        #integrate this into execute
 
+        pass
+    
     # WRITE BACK --------------------------------------------------------------
     # Helper function for write back
     def write_back(self):
         print("[WRITE BACK] Checking RS Units for write back...")
         # First handle the outputs from the reservation stations
         for rs_table in self.all_rs_tables:
-            print(f"[WRITE BACK] Processing RS Table: {rs_table.type}")
+
             for rs_unit in rs_table.table:
+                #if rs_unit.opcode == "sd":
+                    #continue
                 print(f"[WRITE BACK] RS Unit: {rs_unit}")
                 # Check if execution is complete and result is ready
-                if rs_unit.cycles_left == 0 and rs_unit.DST_value is not None:
+                if (rs_unit.cycles_left == 0 and rs_unit.DST_value is not None):
                     # Write back result to ARF and update ROB
-                    result = rs_unit.DST_value
+
+                    if rs_unit.opcode == "ld":
+                        result = self.MEM.read(rs_unit.DST_value)
+                    else:
+                        result = rs_unit.DST_value
+                    #result in SD should hold the mem address
                     #this needs to point to F1,F2,F3...etc
                     arf_reg = rs_unit.ARF_tag
                     CDB_res_reg = rs_unit.DST_tag
@@ -466,10 +568,13 @@ class Architecture:
                     print(f"[WRITE BACK] Writing back result {result} to {arf_reg}, getting ready to update ROB entry for {CDB_res_reg}")
                     #
                     # TODO : Implement CDB arbitration logic
-                    #
+                
                     self.CDB.append((CDB_res_reg, arf_reg, result))
 
                     # Remove RS entry
+                    #if rs_unit.opcode == "sd":
+                        #pass
+                    #else:
                     rs_table.table.remove(rs_unit)
                     print(f"[WRITE BACK] Removed RS Unit {rs_unit} after write back.")
                     break # Only handle one per requirements
@@ -477,9 +582,15 @@ class Architecture:
         # Next, handle the Common Data Bus (CDB) updates
         if len(self.CDB) > 0:
             CDB_res_reg, arf_reg, result = self.CDB.pop()
+        
             print(f"[WRITE BACK] CDB updating ARF:{arf_reg} and CDB_res:{CDB_res_reg} with value {result}")
             # writing to the ARF is done by the commit stage
-            # check all the tables
+            #if it is a ld, we need the value from memory since result is only the offset.
+            #if rs_unit.opcode == "ld":
+                #result = self.MEM.read(result)
+            #else:
+                #result = temp
+            # check a  ll the tables
             for rs_table in self.all_rs_tables:
                 for rs_unit in rs_table.table:
                     if rs_unit.tag1 == CDB_res_reg:
@@ -490,6 +601,9 @@ class Architecture:
                         print(f"[WRITE BACK] Found one in {rs_table.type}")
                         rs_unit.value2 = result
                         print(f"[WRITE BACK] Updated RS Unit {rs_unit} value2 with {result}")
+                    if rs_unit.opcode == "sd" and rs_unit.SD_tag == CDB_res_reg:
+                        rs_unit.SD_value = result
+                        #self.temp_SD_val = rs_unit.SD_value
 
                     # Should be able to remove this
                     if rs_unit.value1 is not None and rs_unit.value2 is not None:
@@ -498,7 +612,9 @@ class Architecture:
 
             # Update ROB entry
             print(f"[WRITE BACK] Completed write back for {arf_reg} with value {result}.")
+
             self.ROB.update(CDB_res_reg, result)
+
             print(f"[WRITE BACK] Updated ROB entry for {CDB_res_reg} with value {result}.")
 
         print(f"[WRITE BACK] Current ROB state: {self.ROB}")
@@ -506,23 +622,52 @@ class Architecture:
     # COMMIT --------------------------------------------------------------
     # TODO : Implement commit logic to use head and tail logic as per ROB design in class
     def commit(self):
+        SD_count = 0
+
+        #one case is where the first sd will dialign the commit clk with the system clk (this can only happen once) and another is where there are mulitple stores in a row
+        #else: commit clock will just follow system clock (No stores have happened)
+        if (self.had_SD is not None and self.clock < self.commit_clock) or (self.previous_ROB == "sd" and self.clock < self.commit_clock):
+            pass
+        else:
+            self.commit_clock = self.clock
+        
+  
+
         if self.ROB.getEntries() > 0:
-            # Peak the front
-
+            #Peak the front
             addr, (alias, value, done, instr_ref) = self.ROB.peek()
-
             print(f"[COMMIT] Checking ROB entry {addr} and clearing from ROB: alias={alias}, value={value}, done={done}")
             if done == True:
+                self.previous_ROB = instr_ref.opcode
+                #print(f"PLSWORK: {instr_ref.opcode}")
                 addr = self.ROB.find_by_alias(alias)
                 print(f"[COMMIT] Committing {value} to {alias} from {addr}")
-                self.ARF.write(alias, value)
-                if instr_ref and instr_ref.commit_cycle is None:
-                    instr_ref.commit_cycle = self.clock
+
+                if instr_ref.opcode == "sd":
+        
+                    self.had_SD = True
+
+                    if instr_ref and instr_ref.commit_cycle is None:
+                        #Base commit stage off commit_clock
+                        instr_ref.commit_cycle = self.commit_clock
+                        instr_ref.commit_cycle_SD = instr_ref.commit_cycle + self.fs_LS.cycles_per_instruction - 1
+                        self.commit_clock = instr_ref.commit_cycle_SD
+
+                else:
+                    if instr_ref and instr_ref.commit_cycle is None:
+                        instr_ref.commit_cycle = self.commit_clock
+                        self.ARF.write(alias, value)
+            
+                #self.previous_ROB = instr_ref.opcode
 
                 # Update RAT to point back to ARF if it still points to this ROB entry
-                if self.RAT.read(alias) == addr:
-                    self.RAT.write(alias, "ARF" + str(int(alias[1:]) + 32))  
-                # Clear the ROB entry
+                if instr_ref.opcode == "sd":
+                    pass
+                else:
+                    if self.RAT.read(alias) == addr:
+
+                        self.RAT.write(alias, "ARF" + str(int(alias[1:]) + 32))  
+                    # Clear the ROB entry
                 self.ROB.clear(addr)
                 # Only commit one instruction per cycle
 
@@ -533,8 +678,11 @@ class Architecture:
                 # make sure the key is clean
                 if rob_entry is not None:
                     # pull values
+        
                     alias, value, done, instr_ref = rob_entry
                     print(f"[COMMIT] Checking ROB entry {rob_entry_key}: alias={alias}, value={value}, done={done}")
+
                     if value is not None and done is not True:
                         print(f"[COMMIT] Waiting 1 cycle to commit {value} to {alias} from {rob_entry_key}")
                         self.ROB.update_done(rob_entry_key, True)
+

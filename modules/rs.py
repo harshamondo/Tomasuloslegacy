@@ -9,15 +9,19 @@ from typing import Callable, Any
 # status means the value is ready for execute
 from collections import deque
 class RS_Unit:
-      def __init__(self, DST_tag = None, opcode = None, reg1 = None, reg2 = None, RAT_object = None, ARF_object = None, cycles_issued = None):
+      def __init__(self, DST_tag = None, opcode = None, reg1 = None, reg2 = None, RAT_object = None, ARF_object = None, cycles_issued = None,SD_dest = None):
             self.opcode = opcode
             self.tag1 = None
             self.tag2 = None
+            self.SD_tag = None
+            self.SD_value = None
             self.value1 = None
             self.value2 = None
 
+            self.LD_SD_Forward = None
+
             #potentially for ld/sd
-            self.offset = None
+            self.offset = reg1
 
             # Branch offset
             self.branch_offset = None
@@ -34,22 +38,31 @@ class RS_Unit:
             self.RAT = RAT_object
             self.ARF = ARF_object
 
+            self.SD_dest = SD_dest
+            self.instr_ref = None
             # We should just assign the value? No need to read
             #self.DST_tag = RAT_object.read(DST_tag)
             self.DST_tag = DST_tag
 
-            #dont need this but going to add as a safe guard for ld/sd
-            if self.opcode != "ld" or self.opcode != "sd":
+            #we are doing SD which does not require register renaming
+            if self.opcode == "sd":
+                  if self.RAT.read(self.SD_dest) != None and self.RAT.read(self.SD_dest)[:3] == "ROB":
+                        self.SD_tag = self.RAT.read(self.SD_dest)
+                        print(f"POOPY {self.SD_tag}")
+                  elif self.RAT.read(self.SD_dest) != None and self.RAT.read(self.SD_dest)[:3] == "ARF":
+                        self.SD_value = self.ARF.read(self.SD_dest)
+
+            #this is for address calculation
+            if self.opcode == "ld" or self.opcode == "sd":
                   
+                  self.value1 = self.offset
+            else:
+
                   if self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ROB":
                         self.tag1 = self.RAT.read(self.reg1)
                   elif self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ARF":
                         self.value1 = self.ARF.read(self.reg1)
-            else:
-                  self.value1 = self.offset
       
-            
-
             if self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ROB":
                 self.tag2 = self.RAT.read(self.reg2)
             elif self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ARF":
@@ -67,6 +80,9 @@ class RS_Unit:
                   f"tag1={self.tag1}, tag2={self.tag2}, value1={self.value1}, value2={self.value2}),"
                   f"cycles_left={self.cycles_left}, cycle_issued={self.cycle_issued}, written_back={self.written_back}"
                   f", branch_offset={self.branch_offset}")
+      def add_instr_ref(self,instr_ref):
+            self.instr_ref = instr_ref
+
 
 # Reservation Station Table - holds multiple RS_Unit objects
 # Type indicates the type of functional unit it is associated with (e.g., Integer Adder, FP Adder, Multiplier, Load/Store)
@@ -77,17 +93,19 @@ OpPair = tuple[str, OpFunc]
 
 # TODO : Neeed to add op tables that has a tuple set of operation name and function to compute
 class RS_Table:
-      def __init__(self, type = None, num_rs_units = 0, num_FU_units = 0, cycles_per_instruction = 0, op = None):
+      def __init__(self, type = None, num_rs_units = 0, num_FU_units = 0, cycles_per_instruction = 0, load_store_address_calc = None, memory = None):
             self.op = []
             self.table = []
             self.type = type
             self.num_units = num_rs_units
             self.num_FU_units = num_FU_units
             self.cycles_per_instruction = cycles_per_instruction
+            self.cycles_in_ex_b4_mem = load_store_address_calc
             self.busy_FU_units = 0
             #store/load RS are queues
             if self.type == "fs_fp_ls":
                   self.table = deque()
+                  self.MEM = memory
 
       def __getitem__(self, idx):
             return self.table[idx]
@@ -194,3 +212,10 @@ def rs_branch_bne(self, rs_unit: RS_Unit):
 
 def rs_branch_beq(self, rs_unit: RS_Unit):
       return rs_unit.value1 == rs_unit.value2
+
+def rs_ld_op(self, rs_unit: RS_Unit):
+     return rs_unit.value1 + rs_unit.value2
+
+def rs_sd_op(self, rs_unit: RS_Unit):
+      return rs_unit.value1 + rs_unit.value2
+
