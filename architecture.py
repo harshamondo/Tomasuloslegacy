@@ -254,13 +254,6 @@ class Architecture:
         return int(self.PC <= self.max_pc)
 
     def issue(self):
-        print(f"[DEBUG] Saving all the data here!")
-        self.branch_CDB = self.CDB
-        self.branch_ROB = self.ROB
-        self.branch_ARF = self.ARF
-        self.branch_RAT = self.RAT
-        self.branch_all_rs_tables = self.all_rs_tables
-
         #add instructions into the RS if not full
         #think about how we are going to stall
         #ask prof if we need to have official states like fetch and decode since our instruction class already handles fetch+decode
