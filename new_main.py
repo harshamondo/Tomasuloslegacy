@@ -60,7 +60,7 @@ def check_init():
     print(f"Current PC: {loot.PC}")
     for i in range(1,total_cycles):
         print("----------------Issuing cycle number:", loot.clock)
-        print(f"Current PC: 0x{loot.PC}")
+        print(f"Current PC: {loot.PC:04X}")
         loot.issue()
         loot.execute()
         loot.write_back()

@@ -91,3 +91,28 @@ class ROB:
             self.data[alias] = (dest, value, done, instr_ref)
             return True
         return False
+    
+    # Ok adding a section to squash all the issues with ROB
+    def squash_after_address(self, branch_addr):
+        # Keep entries up to and including branch_addr, discard all younger ones.
+        # Returns a list of ROB entry keys that were removed.
+        removed = []
+        if not self.data or branch_addr not in self.data:
+            return removed
+
+        new_data = {}
+        for addr, entry in self.data.items():
+            new_data[addr] = entry
+            if addr == branch_addr:
+                # we've copied the branch itself, everything after it is removed
+                break
+
+        # Figure out which entries we dropped for cleaning RS/CDB
+        for addr in list(self.data.keys()):
+            if addr not in new_data:
+                removed.append(addr)
+
+        self.data = new_data
+        # entries tracks how many ROB slots are currently in use
+        self.entries = len(self.data)
+        return removed

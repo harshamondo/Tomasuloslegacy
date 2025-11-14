@@ -343,38 +343,48 @@ class Architecture:
                 self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock))
 
             elif (check == "Beq" or check == "Bne"):
-                # Ignore the next fetch until the Bne is done
-                #halt = True
+                 # Take a RAT snapshot so we can roll back if this branch is mispredicted
+                current_instruction.rat_snapshot = self.RAT.snapshot()
 
-                # Branch will be here
-                self.fs_branch.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
+                # Issue the branch into the branch RS
+                branch_unit = RS_Unit(
+                    current_ROB,
+                    current_instruction.opcode,
+                    current_instruction.src1,
+                    current_instruction.src2,
+                    self.RAT,
+                    self.ARF,
+                    self.clock,
+                )
+                # Remember where this branch lives
+                branch_unit.branch_pc = self.act_PC
+                branch_unit.branch_offset = current_instruction.offset
+                self.fs_branch.table.append(branch_unit)
+                # Also keep the offset through the existing helper (optional but harmless)
                 self.fs_branch.set_branch_offset(0, current_instruction.offset)
+
                 print(f"[DEBUG] Testing if branch gets to here {self.fs_branch}")
 
-                # Branch prediction will be below
-                # add to the btb
+                # Branch prediction / BTB handling
                 if self.BTB.find_prediction(self.act_PC) is None:
                     print(f"[BRANCH] New Entry")
+                    # Store the target (offset/PC) in the BTB
                     self.BTB.add_branch(self.act_PC, current_instruction.offset)
-                    
+
                 current_predication = self.BTB.find_prediction(self.act_PC)
 
                 print(f"[BRANCH] PC : {self.act_PC}")
                 print("[BRANCH] Printing BTB ")
                 print(self.BTB)
 
-                # save all the main data structures to allow for a system save point\
-                print(f"[DEBUG] Saving all the data here!")
-                self.branch_CDB = self.CDB
-                self.branch_ROB = self.ROB
-                self.branch_ARF = self.ARF
-                self.branch_RAT = self.RAT
-                self.branch_all_rs_tables = self.all_rs_tables
-
-                if current_predication == True:
+                # If we predict taken, speculatively move PC to the BTB target
+                if current_predication:
                     self.PC = self.BTB.get_target(self.act_PC)
 
-                print(f"[BRANCH] Info dump target - target {self.BTB.get_target(self.act_PC)} and current prediction | predicted_taken={bool(current_predication)}")
+                print(
+                    f"[BRANCH] Info dump target - target={self.BTB.get_target(self.act_PC)} "
+                    f"| current prediction | predicted_taken={bool(current_predication)}"
+                )
 
             else:
                 #stall due to full RS
@@ -384,12 +394,12 @@ class Architecture:
 
             # We will also be read naming but we shouldn't read until we read from the right registers
             if (check == "Beq" or check == "Bne"):
-                #Change the ROB write
-                self.ROB.write(current_ROB, "Branch", None, False)
+                # Branch writes a ROB entry but does not rename a destination register
+                self.ROB.write(current_ROB, "Branch", None, False, current_instruction)
             else:
-                self.ROB.write(current_ROB, current_instruction.dest, None, False,current_instruction)
-
-            self.RAT.write(current_instruction.dest, current_ROB)
+                self.ROB.write(current_ROB, current_instruction.dest, None, False, current_instruction)
+                # Only real register-writing instructions update the RAT
+                self.RAT.write(current_instruction.dest, current_ROB)
 
             self.instruction_pointer += 1
 
@@ -417,35 +427,75 @@ class Architecture:
             instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
 
             # Branch starts here
-            if (rs_unit.value1 is not None
+                        # ---------------- Branch handling ----------------
+            if (
+                rs_unit.value1 is not None
                 and rs_unit.value2 is not None
-                and rs_table.type == "fs_branch"):
-                # could be buffered but we are just leaving this for write back stage to handle
-                # Handle branches here
-                # Prefer the computed value (offset if taken, else 0)
+                and rs_table.type == "fs_branch"
+                and rs_unit.cycles_left is None   # only handle once
+            ):
+                # Compute the branch condition once
                 rs_unit.DST_value = rs_table.compute(rs_unit)
                 print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
 
+                # Branch is effectively 0-cycle in EX, but we still mark it as 'executed'
                 rs_unit.cycles_left = rs_table.cycles_per_instruction
-                print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2} for {rs_table.cycles_per_instruction} cycles.")
-                off = rs_unit.branch_offset
-                print(f"[BRANCH] Dst {rs_unit.DST_value}")
+                print(
+                    f"[EXECUTE] Starting execution of {rs_unit.opcode} for destination {rs_unit.DST_tag} "
+                    f"with values {rs_unit.value1}, {rs_unit.value2} for {rs_table.cycles_per_instruction} cycles."
+                )
 
-                # handle the prediction
-                current_predication = self.BTB.find_prediction(self.act_PC)
-                if current_predication != rs_unit.DST_value:
-                    print(f"[BRANCH] Mistook the branch, updating prediction to {rs_unit.DST_value}")
-                    
-                    # reset all the structures
-                    self.CDB = self.branch_CDB
-                    self.ROB = self.branch_ROB
-                    self.ARF = self.branch_ARF
-                    self.RAT = self.branch_RAT
-                    self.all_rs_tables = self.branch_all_rs_tables
+                taken = bool(rs_unit.DST_value)
+                branch_pc = getattr(rs_unit, "branch_pc", self.act_PC)
+                print(f"[BRANCH] Result={taken} for branch at PC=0x{branch_pc:04X}")
 
-                    self.BTB.change_prediction(self.act_PC, rs_unit.DST_value)
-                    self.PC = self.BTB.get_target(self.act_PC)
-                    self.pause_for_reset = True
+                # What did we predict?
+                current_predication = self.BTB.find_prediction(branch_pc)
+                print(f"[BRANCH] Predicted_taken={bool(current_predication)} , Actual_taken={taken}")
+
+                if current_predication != taken:
+                    print(f"[BRANCH] MISPREDICT: fixing state and updating prediction to {taken}")
+
+                    # Restore RAT to what it was when the branch was issued
+                    if instr_ref is not None and getattr(instr_ref, "rat_snapshot", None) is not None:
+                        self.RAT.restore(instr_ref.rat_snapshot)
+
+                    # Throw away all young ROB entries
+                    removed_addrs = self.ROB.squash_after_address(rs_unit.DST_tag)
+                    self.RAT.rat_restore_after_squash(removed_addrs)
+
+                    removed_set = set(removed_addrs)
+                    print(f"[BRANCH] Squashed ROB entries: {removed_addrs}")
+
+                    # 3) Flush any RS entries that belonged to squashed ROB entries
+                    if removed_addrs:
+                        for t in self.all_rs_tables:
+                            t.table = [u for u in t.table if u.DST_tag not in removed_set]
+
+                        # 4) Drop any pending CDB updates for squashed entries
+                        if len(self.CDB) > 0:
+                            from collections import deque  # already imported at top, but harmless
+                            new_cdb = deque()
+                            for dest_tag, arf_reg, result in self.CDB:
+                                if dest_tag not in removed_set:
+                                    new_cdb.append((dest_tag, arf_reg, result))
+                            self.CDB = new_cdb
+
+                    # Update the predictor with the correct direction
+                    self.BTB.change_prediction(branch_pc, taken)
+
+                    # Set the PC to the correct path
+                    if taken:
+                        target = self.BTB.get_target(branch_pc)
+                        if target is None:
+                            # Use the saved offset if BTB target is missing
+                            target = rs_unit.branch_offset
+                        self.PC = _to_int_addr(target) # protect
+                    else:
+                        # Not taken: fall-through is just branch_pc + 4
+                        self.PC = branch_pc + 0x4
+
+                    print(f"[BRANCH] New PC after recovery: 0x{self.PC:04X}")
 
                 # if rs_unit.DST_value:
                 #     if isinstance(off, str):
@@ -621,6 +671,8 @@ class Architecture:
             # Peak the front
 
             addr, (alias, value, done, instr_ref) = self.ROB.peek()
+            if addr is None:
+                return
 
             print(f"[COMMIT] Checking ROB entry {addr} and clearing from ROB: alias={alias}, value={value}, done={done}")
             if done == True:

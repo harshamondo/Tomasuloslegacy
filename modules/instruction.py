@@ -20,6 +20,8 @@ class Instruction:
 		self.write_back_cycle = None
 		self.commit_cycle = None
 
+		self.rat_snapshot = None
+
 		# Parse operands for specific opcodes
 		if opcode is not None and operands is not None:
 			op = opcode.lower()
