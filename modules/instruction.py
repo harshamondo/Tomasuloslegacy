@@ -12,6 +12,8 @@ class Instruction:
 		self.src2 = None
 		self.offset = None
 		self.immediate = None
+		# PC of this fetched instance (set during fetch)
+		self.pc = None
 
 		self.rob_tag = None
 		self.issue_cycle = None
@@ -30,6 +32,9 @@ class Instruction:
 		self.SD_val = None
 
 		self.LD_SD_forward = None
+
+		# Branch outcome: True (Taken), False (Not Taken), or None (N/A)
+		self.branch_taken = None
 
 		# Parse operands for specific opcodes
 		if opcode is not None and operands is not None:
