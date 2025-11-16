@@ -22,7 +22,6 @@ class Instruction:
 		self.write_back_cycle = None
 		self.commit_cycle = None
 
-<<<<<<< HEAD
 		#ONLY LD
 		self.mem_cycle_start = None
 		self.mem_cycle_end = None
@@ -36,9 +35,6 @@ class Instruction:
 
 		# Branch outcome: True (Taken), False (Not Taken), or None (N/A)
 		self.branch_taken = None
-=======
-		self.rat_snapshot = None
->>>>>>> 00beec4888a6caa74779e17e96eb43388d36d8cd
 
 		# Parse operands for specific opcodes
 		if opcode is not None and operands is not None:
