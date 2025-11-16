@@ -23,8 +23,10 @@ class RS_Unit:
             #potentially for ld/sd
             self.offset = reg1
 
-            # Branch offset
+            # Branch offset and pc
             self.branch_offset = None
+            self.branch_pc = None
+            
             # self.immediate = immediate
             self.cycles_left = None
             self.cycle_issued = cycles_issued
