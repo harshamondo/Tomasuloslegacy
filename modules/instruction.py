@@ -31,6 +31,9 @@ class Instruction:
 
 		self.LD_SD_forward = None
 
+		# Branch outcome: True (Taken), False (Not Taken), or None (N/A)
+		self.branch_taken = None
+
 		# Parse operands for specific opcodes
 		if opcode is not None and operands is not None:
 			op = opcode.lower()

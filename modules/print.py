@@ -5,7 +5,18 @@ def print_timing_table(instructions):
         return
 
     # Column headers
-    headers = ["Instruction", "Issue", "Execute Start", "Execute End", "MEM_START", "MEM_END", "Write Back", "Commit", "Commit(SD)"]
+    headers = [
+        "Instruction",
+        "Issue",
+        "Execute Start",
+        "Execute End",
+        "MEM_START",
+        "MEM_END",
+        "Write Back",
+        "Commit",
+        "Commit(SD)",
+        "Branch"
+    ]
     
     # Calculate initial column widths based on headers
     col_widths = [len(h) for h in headers]
@@ -20,6 +31,13 @@ def print_timing_table(instructions):
              instr_str = f"{instr.opcode}"
 
         # Collect cycle data, using '-' for uncompleted stages
+        # Branch outcome text if applicable
+        branch_outcome = (
+            ("Taken" if instr.branch_taken else "Not Taken")
+            if instr.branch_taken is not None and str(instr.opcode).lower() in ("beq", "bne")
+            else "-"
+        )
+
         row = [
             instr_str,
             str(instr.issue_cycle) if instr.issue_cycle is not None else "-",
@@ -29,7 +47,8 @@ def print_timing_table(instructions):
             str(instr.mem_cycle_end) if instr.mem_cycle_end is not None else "-",
             str(instr.write_back_cycle) if instr.write_back_cycle is not None else "-",
             str(instr.commit_cycle) if instr.commit_cycle is not None else "-",
-            str(instr.commit_cycle_SD) if instr.commit_cycle_SD is not None else "-"
+            str(instr.commit_cycle_SD) if instr.commit_cycle_SD is not None else "-",
+            branch_outcome
 
         ]
         data_rows.append(row)

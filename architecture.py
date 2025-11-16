@@ -12,6 +12,7 @@ from modules.memory import memory
 from modules.helper import arf_from_csv, is_arf, rat_from_csv, init_ARF_RAT
 from pathlib import Path
 from default_generator.rat_arf_gen import print_file_arf, print_file_rat
+from modules.btb import BTB
 
 # Overall class that determines the architecture of the CPU
 class Architecture:
@@ -151,6 +152,10 @@ class Architecture:
         for pc, instruction in self.instr_addresses:
             print(f"[INIT] PC=0x{pc:04X} Instruction={instruction}")
 
+        # Track how many times each PC has been fetched so we can
+        # append cloned instructions to the end on branch re-fetches
+        self.pc_fetch_count = {pc: 0 for pc, _ in self.instr_addresses}
+
         #initialize RAT and ARF
         #include ways to update ARF based on parameters
         #registers 0-31 and R and 32-64 are F
@@ -174,8 +179,8 @@ class Architecture:
         self.had_SD = None
         self.store_load_forward = None
         #self.last_SD_instruction  = None
-        # Halt
-        self.halt = False
+        # Halt no longer used
+        self.BTB = BTB()
 
         # Create all the savepoint datastructures here
         self.branch_CDB = None
@@ -244,10 +249,36 @@ class Architecture:
     # ISSUE --------------------------------------------------------------
     def fetch(self):
         if not self.has_next():
-            return None # don't fetch out of bounds
-        instr = self.pc_to_instr.get(self.PC)
-        if instr is None:
+            return None  # don't fetch out of bounds
+
+        template = self.pc_to_instr.get(self.PC)
+        if template is None:
             return None
+
+        count = self.pc_fetch_count.get(self.PC, 0)
+        if count == 0:
+            # First time this PC is fetched: use the existing Instruction
+            instr = template
+        else:
+            # Subsequent fetch of same PC (e.g., after a branch): clone and append
+            # so timing table reflects the appended execution instance
+            instr = Instruction(template.opcode, list(template.operands))
+
+            # Re-apply branch operand mapping for Beq/Bne (no dest, src1, src2, offset)
+            op_l = (template.opcode or "").lower()
+            if op_l in ("beq", "bne"):
+                ops = list(template.operands)
+                if len(ops) == 3:
+                    instr.dest = None
+                    instr.src1 = ops[0]
+                    instr.src2 = ops[1]
+                    instr.offset = ops[2]
+                    instr.immediate = None
+
+            # Append cloned instance so it prints at the end
+            self.instructions_in_flight.append(instr)
+
+        self.pc_fetch_count[self.PC] = count + 1
         self.PC += 0x4
         return instr
 
@@ -259,7 +290,7 @@ class Architecture:
         #think about how we are going to stall
         #ask prof if we need to have official states like fetch and decode since our instruction class already handles fetch+decode
         current_instruction = None
-        if self.halt or not self.has_next():
+        if not self.has_next():
             return
         
         current_instruction = self.pc_to_instr.get(self.PC)
@@ -300,7 +331,7 @@ class Architecture:
             current_instruction = None
 
         # NOP is untested
-        if current_instruction is not None and self.halt is not True:
+        if current_instruction is not None:
             current_instruction = self.fetch()
             # DEBUG PRINTS
             #print(f"[ISSUE] int_adder_rs_num: {self.int_adder_rs_num}, fs_int_adder.table size: {self.fs_fp_add.length()}")
@@ -353,15 +384,16 @@ class Architecture:
                     self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock))
 
             elif (check == "Beq" or check == "Bne"):
-                # Ignore the next fetch until the Bne is done
-                halt = True
-
-                # Branch predication will be here
+                # Branch predication will be here (no halting)
                 self.fs_branch.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
                 self.fs_branch.set_branch_offset(0, current_instruction.offset)
-
-                # branch does not stack at the moment!!
                 print(f"[DEBUG] Testing if branch gets to here {self.fs_branch}")
+
+                # add to the btb
+                self.BTB.add_branch(self.PC-0x4, current_instruction.offset)
+                print(f"PC : {self.PC}")
+                print("[BRANCH] Printing BTB ")
+                print(self.BTB)
 
                 # save all the main data structures to allow for a system save point
                 print(f"[DEBUG] Saving all the data here!")
@@ -379,8 +411,8 @@ class Architecture:
             #if current_instruction.opcode != "sd":
             # We will also be read naming but we shouldn't read until we read from the right registers
             if (check == "Beq" or check == "Bne"):
-                #Change the ROB write
-                self.ROB.write(current_ROB, "Branch", None, False)
+                # Change the ROB write (store instr_ref for timing/printing)
+                self.ROB.write(current_ROB, "Branch", None, False, current_instruction)
             else:
                 self.ROB.write(current_ROB, current_instruction.dest, None, False, current_instruction)
 
@@ -527,6 +559,15 @@ class Architecture:
                     # Prefer the computed value (offset if taken, else 0)
                     off = rs_unit.branch_offset
                     print(f"[BRANCH] Dst {rs_unit.DST_value}")
+
+                    # Record branch outcome on the instruction reference for printing
+                    _instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
+                    if _instr_ref is not None:
+                        try:
+                            _instr_ref.branch_taken = bool(rs_unit.DST_value)
+                        except Exception:
+                            _instr_ref.branch_taken = None
+
                     if rs_unit.DST_value:
                         if isinstance(off, str):
                             off = int(off, 16) if off.lower().startswith("0x") else int(off)
@@ -535,7 +576,7 @@ class Architecture:
                         # New PC
                         self.PC = off 
 
-                        self.halt = False  # unfreeze issue/fetch if you halted on branch issue
+                        # unfreeze not needed; halt removed
                         # remove the branch RS entry now that it’s resolved
                         # rs_table.table.remove(rs_unit)
                         print(f"[BRANCH] Resolved: offset={off}, new PC={self.PC}, old PC={oldPC}")
@@ -657,12 +698,13 @@ class Architecture:
             addr, (alias, value, done, instr_ref) = self.ROB.peek()
             print(f"[COMMIT] Checking ROB entry {addr} and clearing from ROB: alias={alias}, value={value}, done={done}")
             if done == True:
-                self.previous_ROB = instr_ref.opcode
+                # Be defensive: instr_ref can be None if an entry was written without it
+                self.previous_ROB = (instr_ref.opcode if instr_ref is not None else alias)
                 #print(f"PLSWORK: {instr_ref.opcode}")
                 addr = self.ROB.find_by_alias(alias)
                 print(f"[COMMIT] Committing {value} to {alias} from {addr}")
 
-                if instr_ref.opcode == "sd":
+                if instr_ref is not None and instr_ref.opcode == "sd":
         
                     self.had_SD = True
 
@@ -671,7 +713,10 @@ class Architecture:
                         instr_ref.commit_cycle = self.commit_clock
                         instr_ref.commit_cycle_SD = instr_ref.commit_cycle + self.fs_LS.cycles_per_instruction - 1
                         self.commit_clock = instr_ref.commit_cycle_SD
-
+                elif instr_ref is not None and (instr_ref.opcode == "Beq" or instr_ref.opcode == "Bne"):
+                    # Branch commits do not update ARF/RAT; just record commit timing
+                    if instr_ref.commit_cycle is None:
+                        instr_ref.commit_cycle = self.commit_clock
                 else:
                     if instr_ref and instr_ref.commit_cycle is None:
                         instr_ref.commit_cycle = self.commit_clock
@@ -680,10 +725,13 @@ class Architecture:
                 #self.previous_ROB = instr_ref.opcode
 
                 # Update RAT to point back to ARF if it still points to this ROB entry
-                if instr_ref.opcode == "sd":
+                if instr_ref is not None and instr_ref.opcode == "sd":
                     pass
                 else:
-                    if self.RAT.read(alias) == addr:
+                    if instr_ref is not None and (instr_ref.opcode == "Beq" or instr_ref.opcode == "Bne"):
+                        # No RAT update for branches
+                        pass
+                    elif self.RAT.read(alias) == addr:
 
                         self.RAT.write(alias, "ARF" + str(int(alias[1:]) + 32))  
                     # Clear the ROB entry

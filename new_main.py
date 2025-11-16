@@ -57,7 +57,7 @@ def check_init():
     
     print("Initial ARF and RAT contents:")
     # print_ARF_RAT(loot)
-    total_cycles = 15
+    total_cycles = 20
 
     print(f"Current PC: {loot.PC}")
     for i in range(1,total_cycles):
@@ -85,12 +85,11 @@ def check_init():
 def test_btb():
     hi = BTB()
     hi.add_branch(0xF, 0xA)           # insert (tag = 0xA & 0b111 = 0b010)
-    print(hi.find_prediction(0xF))    # 0
+    print(hi.find_prediction(0xF))    
     hi.change_prediction(0xF, True)
-    print(hi.find_prediction(0xF))    # 1
+    print(hi.find_prediction(0xF))    
     print(hi.get_target(0xF))         # 0xF
     print(hi)                         
 
 if __name__ == "__main__":
-    test_btb()
-	#check_init()  
+	check_init()  
