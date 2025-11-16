@@ -1,4 +1,4 @@
 Add.d F1, F2, F3
 Add.d F5, F10, F5
 Beq F1, F5, 0x0
-Add.d F7, F10, F8
+Add.d F8, F10, F8

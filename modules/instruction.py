@@ -12,6 +12,8 @@ class Instruction:
 		self.src2 = None
 		self.offset = None
 		self.immediate = None
+		# PC of this fetched instance (set during fetch)
+		self.pc = None
 
 		self.rob_tag = None
 		self.issue_cycle = None
