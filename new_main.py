@@ -13,7 +13,6 @@ from modules.print import print_timing_table
 # temporary
 from modules.btb import BTB
 
-
 # Helper : Function to print ARF and RAT contents
 def print_ARF_RAT(arch):
     print("Architectural Register File (ARF) Contents:")
@@ -63,7 +62,9 @@ def check_init():
     print(f"Current PC: {loot.PC}")
     for i in range(1,total_cycles):
         print("----------------Issuing cycle number:", loot.clock)
-        print(f"Current PC: {loot.PC:04X}")
+        print(f"Current PC: 0x{loot.PC}")
+        
+        print(f"TRACKING R2: {loot.ARF.read("R2")}")
         loot.issue()
         loot.execute()
         loot.write_back()
