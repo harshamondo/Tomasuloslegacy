@@ -2,4 +2,4 @@ Type,# of rs,Cycles in EX,Cycles in Mem,# of FUs
 Integer adder,2,1,0,1
 FP adder,2,3,0,1
 FP multiplier,2,20,0,1
-Load/store unit,3,2,2,1
+Load/store unit,3,2,5,1

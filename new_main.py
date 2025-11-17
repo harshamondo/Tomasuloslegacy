@@ -49,9 +49,8 @@ def check_init():
     #loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
     #loot = Architecture("instruction_sets/instructions.txt")
     #loot = Architecture("instruction_sets/load_store_test.txt")
-    #loot = Architecture("instruction_sets/load_store_forwarding.txt")
-    loot = Architecture("instruction_sets/load_store_memory.txt")
-    
+    loot = Architecture("instruction_sets/load_store_forwarding.txt")
+    #loot = Architecture("instruction_sets/load_store_memory.txt")
     print("Initial ARF and RAT contents:")
     # print_ARF_RAT(loot)
     total_cycles = 15

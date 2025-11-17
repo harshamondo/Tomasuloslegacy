@@ -51,6 +51,7 @@ class Architecture:
         self.MEM.write(44,21)
         self.MEM.write(39,21)
         self.MEM.write(25,40)
+        self.MEM.write(3,45)
 
         with open(self.config, newline='') as f:
             reader = csv.DictReader(f)
@@ -170,7 +171,7 @@ class Architecture:
 
         #temp SD value holder
         self.temp_SD_val = None
-        self.commit_clock = None
+        self.commit_clock = self.clock
         self.had_SD = None
         self.store_load_forward = None
         #self.last_SD_instruction  = None
@@ -394,6 +395,7 @@ class Architecture:
             print(f"LOOT: value1 = {rs_unit.value1}, value2 = {rs_unit.value2}, cycles_left = {rs_unit.cycles_left}, busy units = {rs_table.busy_FU_units}, num units = {rs_table.num_FU_units}")
             instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
 
+            #add extra condition for memory hazards
             if (
                 rs_unit.value1 is not None and 
                 rs_unit.value2 is not None and 
@@ -475,17 +477,15 @@ class Architecture:
                 #load/store forwarding
                 #rs_table.table contains all RS entries in a specific RS(int add, fp add, ..etc)
                 #rs_unit is a specific index in that table
-                #if rs_unit.opcode == "ld":
+                if rs_unit.opcode == "ld":
                     
-                    #for i in range(index, -1, -1):
+                    for i in range(index, -1, -1):
                         #a older RS queue entry's target address matches the ld's target address
-                        #if rs_table.table[i].DST_value == rs_unit.DST_value:
-                            #self.ARF.write(rs_unit.DST_tag,self.ARF.read(rs_table.table[i].DST_tag))
+                        if rs_table.table[i].opcode == "sd" and rs_table.table[i].DST_value == rs_unit.DST_value:
+    
+                            instr_ref.mem_cycle_end = instr_ref.mem_cycle_start      
+                            instr_ref.LD_SD_forward = True
 
-                            #print(f"DEBUG: {rs_unit.DST_tag}")
-                            #print(f"DEBUG: {self.ARF.read(rs_table.table[i].DST_tag)}")
-                            #instr_ref.mem_cycle_end = instr_ref.mem_cycle_start      
-                            #instr_ref.LD_SD_forward = True  
 
                 if rs_unit.opcode == "sd":
                     SD_res = self.ARF.read(rs_unit.SD_dest)
@@ -552,8 +552,10 @@ class Architecture:
                     #continue
                 print(f"[WRITE BACK] RS Unit: {rs_unit}")
                 # Check if execution is complete and result is ready
-                if (rs_unit.cycles_left == 0 and rs_unit.DST_value is not None):
+                if (rs_unit.cycles_left == 0 and rs_unit.DST_value is not None and not rs_unit.broadcasted):
                     # Write back result to ARF and update ROB
+
+                    rs_unit.broadcasted = True
 
                     if rs_unit.opcode == "ld":
                         result = self.MEM.read(rs_unit.DST_value)
@@ -572,12 +574,12 @@ class Architecture:
                     self.CDB.append((CDB_res_reg, arf_reg, result))
 
                     # Remove RS entry
-                    #if rs_unit.opcode == "sd":
-                        #pass
-                    #else:
-                    rs_table.table.remove(rs_unit)
-                    print(f"[WRITE BACK] Removed RS Unit {rs_unit} after write back.")
-                    break # Only handle one per requirements
+                    if rs_unit.opcode == "sd":
+                        pass
+                    else:
+                        rs_table.table.remove(rs_unit)
+                        print(f"[WRITE BACK] Removed RS Unit {rs_unit} after write back.")
+                        break # Only handle one per requirements
 
         # Next, handle the Common Data Bus (CDB) updates
         if len(self.CDB) > 0:
@@ -632,7 +634,7 @@ class Architecture:
             self.commit_clock = self.clock
         
   
-
+        print(f"CURRENT DEBUG: {self.ROB.getEntries()}")
         if self.ROB.getEntries() > 0:
             #Peak the front
             addr, (alias, value, done, instr_ref) = self.ROB.peek()
@@ -652,11 +654,12 @@ class Architecture:
                         instr_ref.commit_cycle = self.commit_clock
                         instr_ref.commit_cycle_SD = instr_ref.commit_cycle + self.fs_LS.cycles_per_instruction - 1
                         self.commit_clock = instr_ref.commit_cycle_SD
-
+                    
                 else:
                     if instr_ref and instr_ref.commit_cycle is None:
                         instr_ref.commit_cycle = self.commit_clock
                         self.ARF.write(alias, value)
+                            
             
                 #self.previous_ROB = instr_ref.opcode
 

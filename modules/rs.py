@@ -40,6 +40,8 @@ class RS_Unit:
 
             self.SD_dest = SD_dest
             self.instr_ref = None
+
+            self.broadcasted = False
             # We should just assign the value? No need to read
             #self.DST_tag = RAT_object.read(DST_tag)
             self.DST_tag = DST_tag
