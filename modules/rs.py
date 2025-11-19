@@ -22,7 +22,7 @@ class RS_Unit:
 
             #potentially for ld/sd
             self.offset = reg1
-
+            self.timing_ref = None
             # Branch offset
             self.branch_offset = None
             # self.immediate = immediate
