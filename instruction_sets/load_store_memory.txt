@@ -1,4 +1,4 @@
-Add.d R3, R4, R5
+Mult.d F4, F3, F6
 ld R2, 0(R3)
 Add R4, R5, R6
 sd R3, 0(R4)

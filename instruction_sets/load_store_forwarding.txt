@@ -1,2 +1,3 @@
-sd R2, 0(R3)
-Add R4, R2, R3
+Mult.d F4, F3, F6
+sd R2, 0(R4)
+ld R4, 0(R7)
