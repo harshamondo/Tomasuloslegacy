@@ -52,20 +52,25 @@ class RS_Unit:
                   elif self.RAT.read(self.SD_dest) != None and self.RAT.read(self.SD_dest)[:3] == "ARF":
                         self.SD_value = self.ARF.read(self.SD_dest)
 
-            #this is for address calculation
+            # this is for address calculation for loads/stores
             if self.opcode == "ld" or self.opcode == "sd":
-                  
                   self.value1 = self.offset
             else:
-
-                  if self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ROB":
+                  # General register read for reg1
+                  # Treat architectural R0 as hard-wired zero.
+                  if self.reg1 == "R0":
+                        self.value1 = 0
+                  elif self.RAT.read(self.reg1) is not None and self.RAT.read(self.reg1)[:3] == "ROB":
                         self.tag1 = self.RAT.read(self.reg1)
-                  elif self.RAT.read(self.reg1) != None and self.RAT.read(self.reg1)[:3] == "ARF":
+                  elif self.RAT.read(self.reg1) is not None and self.RAT.read(self.reg1)[:3] == "ARF":
                         self.value1 = self.ARF.read(self.reg1)
       
-            if self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ROB":
+            # General register read for reg2 (including ld/sd base register)
+            if self.reg2 == "R0":
+                self.value2 = 0
+            elif self.RAT.read(self.reg2) is not None and self.RAT.read(self.reg2)[:3] == "ROB":
                 self.tag2 = self.RAT.read(self.reg2)
-            elif self.RAT.read(self.reg2) != None and self.RAT.read(self.reg2)[:3] == "ARF":
+            elif self.RAT.read(self.reg2) is not None and self.RAT.read(self.reg2)[:3] == "ARF":
                 self.value2 = self.ARF.read(self.reg2)
       
       def set_branch_offset(self, branch_offset):

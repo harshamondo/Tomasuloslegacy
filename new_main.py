@@ -14,22 +14,49 @@ from modules.print import print_timing_table
 from modules.btb import BTB
 
 # Helper : Function to print ARF and RAT contents
-def print_ARF_RAT(arch):
-    print("Architectural Register File (ARF) Contents:")
-    for i in range(1, 33):
-        print(f"R{i}: {arch.ARF.read('R'+ str(i))}")
-    for i in range(1, 33):
-        print(f"F{i}: {arch.ARF.read('F'+ str(i))}")
+def _print_table(title, headers, rows):
+    if title:
+        print(title)
+    if not rows:
+        print("(empty)\n")
+        return
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for idx, cell in enumerate(row):
+            widths[idx] = max(widths[idx], len(str(cell)))
+    fmt = " | ".join("{:<" + str(w) + "}" for w in widths)
+    separator = "-+-".join("-" * w for w in widths)
+    print(fmt.format(*headers))
+    print(separator)
+    for row in rows:
+        print(fmt.format(*row))
+    print()
 
-    print("\nRegister Alias Table (RAT) Contents:")
-    for i in range(1, 33):
-        print(f"R{i}: {arch.RAT.read('R'+ str(i))}")
-    for i in range(1, 33):
-        print(f"F{i}: {arch.RAT.read('F'+ str(i))}")
+def print_ARF_RAT(arch):
+    int_rows = [(f"R{i}", arch.ARF.read(f"R{i}")) for i in range(1, 33)]
+    fp_rows = [(f"F{i}", arch.ARF.read(f"F{i}")) for i in range(1, 33)]
+    rat_int_rows = [(f"R{i}", arch.RAT.read(f"R{i}")) for i in range(1, 33)]
+    rat_fp_rows = [(f"F{i}", arch.RAT.read(f"F{i}")) for i in range(1, 33)]
+
+    _print_table("Architectural Register File (Integer Registers)", ["Register", "Value"], int_rows)
+    _print_table("Architectural Register File (Floating Registers)", ["Register", "Value"], fp_rows)
+    _print_table("Register Alias Table (Integer Registers)", ["Register", "Alias"], rat_int_rows)
+    _print_table("Register Alias Table (Floating Registers)", ["Register", "Alias"], rat_fp_rows)
+
+    print_memory(arch)
+
+def print_memory(arch):
+    mem_rows = []
+    if hasattr(arch, "MEM") and hasattr(arch.MEM, "data"):
+        mem_rows = [(addr, arch.MEM.data[addr]) for addr in sorted(arch.MEM.data.keys())]
+    _print_table("Memory Contents", ["Address", "Value"], mem_rows)
 
 def print_ROB(arch):
-    print("\nReorder Buffer (ROB) Contents:")
-    print(arch.ROB)
+    rob_rows = []
+    for addr, (alias, value, done, instr_ref) in arch.ROB.data.items():
+        opcode = getattr(instr_ref, "opcode", "-") if instr_ref else "-"
+        rob_rows.append((addr, alias, value, done, opcode))
+    _print_table("Reorder Buffer (ROB) Contents", ["Entry", "Alias", "Value", "Done", "Opcode"], rob_rows)
 
 # Helper : Function to run a test simulation
 def check_init():
@@ -45,9 +72,10 @@ def check_init():
     sys.stdout = StreamToLogger(logging.getLogger("stdout"), logging.INFO)
     sys.stderr = StreamToLogger(logging.getLogger("stderr"), logging.ERROR)
 
-    print("logger initialized")  
+    print("logger initialized")
 
-    loot = Architecture("instruction_sets/final_demo.txt")
+    loot = Architecture("instruction_sets/final.txt")
+    #loot = Architecture("instruction_sets/final_demo.txt")
     #loot = Architecture("instruction_sets/branch_test.txt")
     #loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
     #loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
@@ -60,14 +88,14 @@ def check_init():
     
     print("Initial ARF and RAT contents:")
     # print_ARF_RAT(loot)
-    total_cycles = 40
+    total_cycles = 100
 
     print(f"Current PC: {loot.PC}")
     for i in range(1,total_cycles):
         print("----------------Issuing cycle number:", loot.clock)
         print(f"Current PC: 0x{loot.PC}")
         
-        print(f"TRACKING R2: {loot.ARF.read("R2")}")
+        #print(f"TRACKING R2: {loot.ARF.read("R2")}")
         loot.issue()
         loot.execute()
         loot.write_back()
@@ -83,7 +111,7 @@ def check_init():
 
     print_timing_table(loot.instructions_in_flight)
     #for store word test
-    print(loot.MEM.read(32))
+    _print_table
 
 
 def test_btb():

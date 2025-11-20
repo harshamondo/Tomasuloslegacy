@@ -194,6 +194,30 @@ class Architecture:
         self.branch_RAT = None
         self.branch_all_rs_tables = None
 
+    def _resolve_ready_rs_sources(self, rs_unit):
+        # Helper to resolve a single tag/value pair from ROB.
+        def _resolve(tag_name):
+            entry = self.ROB.read(tag_name)
+            if entry:
+                _, value, done, _ = entry
+                if value is not None and done:
+                    return value
+            return None
+
+        # tag1/value1
+        if getattr(rs_unit, "tag1", None) and isinstance(rs_unit.tag1, str) and rs_unit.tag1.startswith("ROB"):
+            ready_val = _resolve(rs_unit.tag1)
+            if ready_val is not None:
+                rs_unit.value1 = ready_val
+                rs_unit.tag1 = None
+
+        # tag2/value2
+        if getattr(rs_unit, "tag2", None) and isinstance(rs_unit.tag2, str) and rs_unit.tag2.startswith("ROB"):
+            ready_val = _resolve(rs_unit.tag2)
+            if ready_val is not None:
+                rs_unit.value2 = ready_val
+                rs_unit.tag2 = None
+
     # Helper functions to get the functions from the txt file and get them read for issue
     def init_instr(self):
             instructions_list = self.parse()
@@ -374,6 +398,7 @@ class Architecture:
                     self.clock,
                 )
                 rs.add_instr_ref(current_instruction)
+                self._resolve_ready_rs_sources(rs)
                 self.fs_fp_add.table.append(rs)
 
             elif (check == "Add" or check == "Sub" or check == "Addi") and self.fs_int_adder.length() < self.int_adder_rs_num:
@@ -391,6 +416,7 @@ class Architecture:
                     # immediate value goes to value2 without tag needed
                     rs.value2 = int(current_instruction.immediate)
                     rs.add_instr_ref(current_instruction)
+                    self._resolve_ready_rs_sources(rs)
                     self.fs_int_adder.table.append(rs)
                 else:
                     rs = RS_Unit(
@@ -403,6 +429,7 @@ class Architecture:
                         self.clock,
                     )
                     rs.add_instr_ref(current_instruction)
+                    self._resolve_ready_rs_sources(rs)
                     self.fs_int_adder.table.append(rs)
 
             elif (check == "Mult.d") and self.fs_mult.length() < self.multiplier_rs_num:
@@ -416,6 +443,7 @@ class Architecture:
                     self.clock,
                 )
                 rs.add_instr_ref(current_instruction)
+                self._resolve_ready_rs_sources(rs)
                 self.fs_mult.table.append(rs)
 
             elif (check == "sd" or check == "ld") and self.fs_LS.length() < self.load_store_rs_num:
@@ -443,6 +471,7 @@ class Architecture:
                         self.clock,
                     )
                 rs.add_instr_ref(current_instruction)
+                self._resolve_ready_rs_sources(rs)
                 self.fs_LS.table.append(rs)
 
             elif (check == "Beq" or check == "Bne"):
@@ -457,6 +486,7 @@ class Architecture:
                     self.clock,
                 )
                 branch_rs.add_instr_ref(current_instruction)
+                self._resolve_ready_rs_sources(branch_rs)
                 self.fs_branch.table.append(branch_rs)
                 # set offset for the newly added branch entry
                 self.fs_branch.set_branch_offset(len(self.fs_branch.table) - 1, current_instruction.offset)
@@ -633,6 +663,12 @@ class Architecture:
                     SD_res = self.ARF.read(rs_unit.SD_dest)
                     self.MEM.write(rs_unit.DST_value,SD_res)
                     self.temp_LS.append((SD_res,rs_unit.DST_value))
+                    # Mark the store as completed in the ROB so it
+                    # can commit without going through the CDB path.
+                    try:
+                        self.ROB.update_done(rs_unit.DST_tag, True)
+                    except Exception:
+                        pass
                     #rs_unit.add_instr_ref(instr_ref)
                 else:
                     if instr_ref and str(instr_ref.opcode).lower() not in ("beq", "bne"):
@@ -767,12 +803,14 @@ class Architecture:
         for rs_table in self.all_rs_tables:
 
             for rs_unit in rs_table.table:
-                # branches do not write back via CDB so we are just gonna ignore. This is really just for printing
+                # branches and stores do not write back via CDB; they
+                # are either handled in execute (sd) or via branch logic
+                # for timing/printing only.
                 try:
                     op_lower = str(rs_unit.opcode).lower()
                 except Exception:
                     op_lower = ""
-                if op_lower in ("beq", "bne") or rs_table.type == "fs_branch":
+                if op_lower in ("beq", "bne", "sd") or rs_table.type == "fs_branch":
                     continue
                 #if rs_unit.opcode == "sd":
                     #continue
@@ -857,17 +895,6 @@ class Architecture:
     
     # COMMIT --------------------------------------------------------------
     def commit(self):
-        SD_count = 0
-
-        # one case is where the first sd will dialign the commit clk with the system clk (this can only happen once) and another is where there are mulitple stores in a row
-         #else: commit clock will just follow system clock (No stores have happened)
-        #if (self.had_SD is not None and self.clock < self.commit_clock) or (self.previous_ROB == "sd" and self.clock < self.commit_clock and self.had_SD is not None):
-            #pass
-        #else:
-            #self.commit_clock = self.clock
-        
-  
-
         if self.ROB.getEntries() > 0:
             #Peak the front
             addr, (alias, value, done, instr_ref) = self.ROB.peek()
@@ -878,31 +905,22 @@ class Architecture:
                 #print(f"PLSWORK: {instr_ref.opcode}")
                 addr = self.ROB.find_by_alias(alias)
                 print(f"[COMMIT] Committing {value} to {alias} from {addr}")
-                
-                if (self.had_SD is not None and self.clock < self.commit_clock) or (self.previous_ROB == "sd" and self.clock < self.commit_clock and self.had_SD is not None):
-                    pass
-                elif self.clock > self.commit_clock and instr_ref.LD_SD_forward is not None:
-                    pass
-                else:
-                    self.commit_clock = self.clock
 
                 if instr_ref is not None and instr_ref.opcode == "sd":
-        
+                    # Stores do not write a value to ARF but we still
+                    # want to record when their commit stage happens
                     self.had_SD = True
-
                     if instr_ref and instr_ref.commit_cycle is None:
-                        # Base commit stage off commit_clock
-                        instr_ref.commit_cycle = self.commit_clock
-                        instr_ref.commit_cycle_SD = instr_ref.commit_cycle + self.fs_LS.cycles_per_instruction - 1
-                        self.commit_clock = instr_ref.commit_cycle_SD
-                    
-                    #if len(self.fs_LS.table) > 0:
-                        #self.fs_LS.table.pop()
+                        instr_ref.commit_cycle = self.clock
+                        # For printing, model the SD "commit window"
+                        instr_ref.commit_cycle_SD = (
+                            instr_ref.commit_cycle + self.fs_LS.cycles_per_instruction - 1
+                        )
 
                 elif instr_ref is not None and (instr_ref.opcode == "Beq" or instr_ref.opcode == "Bne"):
                     # Branch commits do not update ARF/RAT; just record commit timing
                     if instr_ref.commit_cycle is None:
-                        instr_ref.commit_cycle = self.commit_clock
+                        instr_ref.commit_cycle = self.clock
                 else:
                     if instr_ref and instr_ref.commit_cycle is None:
 
@@ -911,7 +929,7 @@ class Architecture:
                         else:
                             self.ARF.write(alias, value)           
 
-                        instr_ref.commit_cycle = self.commit_clock
+                        instr_ref.commit_cycle = self.clock
                         
 
                 # Update RAT to point back to ARF if it still points to this ROB entry
