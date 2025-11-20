@@ -13,5 +13,3 @@ class memory:
     
     def __str__(self):
         return f"ARF(Rdata={self.R_type})"
-    
-    

@@ -47,9 +47,10 @@ def check_init():
 
     print("logger initialized")  
 
+    loot = Architecture("instruction_sets/branch_test_games.txt")
     #loot = Architecture("instruction_sets/branch_test.txt")
     #loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
-    loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
+    #loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
     #loot = Architecture("instruction_sets/instructions.txt")
     #loot = Architecture("instruction_sets/load_store_test.txt")
     #loot = Architecture("instruction_sets/load_store_forwarding.txt")
@@ -57,7 +58,7 @@ def check_init():
     
     print("Initial ARF and RAT contents:")
     # print_ARF_RAT(loot)
-    total_cycles = 30
+    total_cycles = 100
 
     print(f"Current PC: {loot.PC}")
     for i in range(1,total_cycles):
@@ -89,7 +90,7 @@ def test_btb():
     hi.change_prediction(0xF, True)
     print(hi.find_prediction(0xF))    
     print(hi.get_target(0xF))         # 0xF
-    print(hi)                         
+    print(hi)
 
 if __name__ == "__main__":
 	check_init()  
