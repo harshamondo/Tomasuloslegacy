@@ -45,9 +45,10 @@ def check_init():
     sys.stdout = StreamToLogger(logging.getLogger("stdout"), logging.INFO)
     sys.stderr = StreamToLogger(logging.getLogger("stderr"), logging.ERROR)
 
-    print("logger initialized")  
+    print("logger initialized")
 
-    loot = Architecture("instruction_sets/final_demo.txt")
+    loot = Architecture("instruction_sets/final.txt")
+    #loot = Architecture("instruction_sets/final_demo.txt")
     #loot = Architecture("instruction_sets/branch_test.txt")
     #loot = Architecture("instruction_sets/straight_line_dependencies_no_load.txt")
     #loot = Architecture("instruction_sets/straight_line_case_no_load.txt")
