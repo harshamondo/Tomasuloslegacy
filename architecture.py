@@ -363,35 +363,102 @@ class Architecture:
             #have to add tables for mult, and ld/store
             print(f"[ISSUE] Check: {check}")
             if (check == "Add.d" or check == "Sub.d") and self.fs_fp_add.length() < self.FP_adder_rs_num:
-                self.fs_fp_add.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
+                rs = RS_Unit(
+                    current_ROB,
+                    current_instruction.opcode,
+                    current_instruction.src1,
+                    current_instruction.src2,
+                    self.RAT,
+                    self.ARF,
+                    self.clock,
+                )
+                rs.add_instr_ref(current_instruction)
+                self.fs_fp_add.table.append(rs)
 
             elif (check == "Add" or check == "Sub" or check == "Addi") and self.fs_int_adder.length() < self.int_adder_rs_num:
                 print("[ISSUE] ------")
                 if check == "Addi":
-                    rs = RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.immediate, self.RAT, self.ARF,self.clock)
+                    rs = RS_Unit(
+                        current_ROB,
+                        current_instruction.opcode,
+                        current_instruction.src1,
+                        current_instruction.immediate,
+                        self.RAT,
+                        self.ARF,
+                        self.clock,
+                    )
                     # immediate value goes to value2 without tag needed
                     rs.value2 = int(current_instruction.immediate)
-                    # print("[ISSUE] Added Addi RS Unit with immediate value:", rs.value2)
-                    # print("[ISSUE] RS Unit details:", rs)
+                    rs.add_instr_ref(current_instruction)
                     self.fs_int_adder.table.append(rs)
                 else:
-                    self.fs_int_adder.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
+                    rs = RS_Unit(
+                        current_ROB,
+                        current_instruction.opcode,
+                        current_instruction.src1,
+                        current_instruction.src2,
+                        self.RAT,
+                        self.ARF,
+                        self.clock,
+                    )
+                    rs.add_instr_ref(current_instruction)
+                    self.fs_int_adder.table.append(rs)
 
             elif (check == "Mult.d") and self.fs_mult.length() < self.multiplier_rs_num:
-                self.fs_mult.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
+                rs = RS_Unit(
+                    current_ROB,
+                    current_instruction.opcode,
+                    current_instruction.src1,
+                    current_instruction.src2,
+                    self.RAT,
+                    self.ARF,
+                    self.clock,
+                )
+                rs.add_instr_ref(current_instruction)
+                self.fs_mult.table.append(rs)
 
             elif (check == "sd" or check == "ld") and self.fs_LS.length() < self.load_store_rs_num:
                 print("[ISSUE] Added ld or sd")
                 #this already works for load
                 if check == "sd":
-                    self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock,current_instruction.dest))
+                    rs = RS_Unit(
+                        current_ROB,
+                        current_instruction.opcode,
+                        current_instruction.offset,
+                        current_instruction.src1,
+                        self.RAT,
+                        self.ARF,
+                        self.clock,
+                        current_instruction.dest,
+                    )
                 else:
-                    self.fs_LS.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.offset, current_instruction.src1, self.RAT, self.ARF,self.clock))
+                    rs = RS_Unit(
+                        current_ROB,
+                        current_instruction.opcode,
+                        current_instruction.offset,
+                        current_instruction.src1,
+                        self.RAT,
+                        self.ARF,
+                        self.clock,
+                    )
+                rs.add_instr_ref(current_instruction)
+                self.fs_LS.table.append(rs)
 
             elif (check == "Beq" or check == "Bne"):
                 # Branch predication will be here (no halting)
-                self.fs_branch.table.append(RS_Unit(current_ROB, current_instruction.opcode, current_instruction.src1, current_instruction.src2, self.RAT, self.ARF,self.clock))
-                self.fs_branch.set_branch_offset(0, current_instruction.offset)
+                branch_rs = RS_Unit(
+                    current_ROB,
+                    current_instruction.opcode,
+                    current_instruction.src1,
+                    current_instruction.src2,
+                    self.RAT,
+                    self.ARF,
+                    self.clock,
+                )
+                branch_rs.add_instr_ref(current_instruction)
+                self.fs_branch.table.append(branch_rs)
+                # set offset for the newly added branch entry
+                self.fs_branch.set_branch_offset(len(self.fs_branch.table) - 1, current_instruction.offset)
                 print(f"[DEBUG] Testing if branch gets to here {self.fs_branch}")
 
                 # add to the btb
@@ -447,8 +514,19 @@ class Architecture:
             # General execution logic for RS units
             # if rs_table.check_rs_full() is False:
             # Start execution if operands ready, not already executing, and FU available
-            print(f"LOOT: value1 = {rs_unit.value1}, value2 = {rs_unit.value2}, cycles_left = {rs_unit.cycles_left}, busy units = {rs_table.busy_FU_units}, num units = {rs_table.num_FU_units}")
-            instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
+            print(
+                f"LOOT: value1 = {rs_unit.value1}, value2 = {rs_unit.value2}, "
+                f"cycles_left = {rs_unit.cycles_left}, busy units = {rs_table.busy_FU_units}, "
+                f"num units = {rs_table.num_FU_units}"
+            )
+            # Prefer the Instruction reference stored on the RS unit itself.
+            # Fall back to a lookup by ROB tag for any older entries that may not have it.
+            instr_ref = getattr(rs_unit, "instr_ref", None)
+            if instr_ref is None:
+                instr_ref = next(
+                    (instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag),
+                    None,
+                )
 
             if (
                 rs_unit.value1 is not None and 
@@ -524,9 +602,6 @@ class Architecture:
                 rs_unit.DST_value = rs_table.compute(rs_unit)
                 print(f"[EXECUTE] RS Unit {rs_unit} has moved to WB with execution with result {rs_unit.DST_value}.")
                 
-                #roshan
-                instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
-                
                 #load/store forwarding
                 #rs_table.table contains all RS entries in a specific RS(int add, fp add, ..etc)
                 #rs_unit is a specific index in that table
@@ -574,12 +649,12 @@ class Architecture:
                     self.ROB.update(rs_unit.DST_tag, rs_unit.DST_value)
 
                     # Record branch outcome on the instruction reference for printing
-                    _instr_ref = next((instr for instr in self.instructions_in_flight if instr.rob_tag == rs_unit.DST_tag), None)
-                    if _instr_ref is not None:
+                    branch_instr = instr_ref
+                    if branch_instr is not None:
                         try:
-                            _instr_ref.branch_taken = bool(rs_unit.DST_value)
+                            branch_instr.branch_taken = bool(rs_unit.DST_value)
                         except Exception:
-                            _instr_ref.branch_taken = None
+                            branch_instr.branch_taken = None
 
                     if rs_unit.DST_value:
                         if isinstance(off, str):
@@ -594,8 +669,8 @@ class Architecture:
                         print(f"[BRANCH] Resolved: offset={off}, new PC={self.PC}, old PC={oldPC}")
                         # Squash fall-through path instructions fetched after this branch
                         try:
-                            if _instr_ref is not None and getattr(_instr_ref, 'pc', None) is not None:
-                                self._squash_after_branch_taken(_instr_ref.pc)
+                            if branch_instr is not None and getattr(branch_instr, "pc", None) is not None:
+                                self._squash_after_branch_taken(branch_instr.pc)
                         except Exception:
                             pass
                     
