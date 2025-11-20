@@ -68,7 +68,7 @@ def check_init():
         print("----------------Issuing cycle number:", loot.clock)
         print(f"Current PC: 0x{loot.PC}")
         
-        print(f"TRACKING R2: {loot.ARF.read("R2")}")
+        #print(f"TRACKING R2: {loot.ARF.read("R2")}")
         loot.issue()
         loot.execute()
         loot.write_back()
