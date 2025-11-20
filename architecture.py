@@ -49,11 +49,12 @@ class Architecture:
         #memory must be initiialized before all the RS tables
         #Can add way to parse a config for default memory addresses and values
         self.MEM = memory()
-        self.MEM.write(44,21)
-        self.MEM.write(39,21)
-        self.MEM.write(25,40)
-        self.MEM.write(0,67)
-        self.MEM.write(3,90)
+        self.MEM.write(4,3)
+        self.MEM.write(8,2)
+        self.MEM.write(12,1)
+        self.MEM.write(24,6)
+        self.MEM.write(28,5)
+        self.MEM.write(32,4)
 
         with open(self.config, newline='') as f:
             reader = csv.DictReader(f)
@@ -532,7 +533,7 @@ class Architecture:
                 rs_unit.value1 is not None and 
                 rs_unit.value2 is not None and 
                 rs_unit.cycles_left is None and 
-                rs_table.busy_FU_units < rs_table.num_FU_units and
+                rs_table.busy_FU_units <= rs_table.num_FU_units and
                 (rs_unit.opcode != "sd" or rs_unit.SD_value is not None)#SD_value here is the value needed for address calculation
             ):
 
@@ -568,13 +569,15 @@ class Architecture:
             elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 1:
                 
                 rs_unit.cycles_left -= 1
-                
                 if rs_unit.opcode == "ld":
 
                     if rs_unit.cycles_left == rs_table.cycles_per_instruction:
                         if instr_ref and instr_ref.mem_cycle_start is None:
-                            instr_ref.mem_cycle_start = self.clock + 1
-
+                            if rs_table.memory_occupied == False:
+                                instr_ref.mem_cycle_start = self.clock + 1
+                                rs_table.use_memory()
+                            else:
+                                rs_unit.cycles_left = rs_unit.cycles_left + 1
                     
                         if instr_ref and instr_ref.execute_end_cycle is None:
                             instr_ref.execute_end_cycle = self.clock
@@ -589,7 +592,11 @@ class Architecture:
                 if rs_unit.opcode == "ld":
                     print(f"HERE")
                     if instr_ref and instr_ref.mem_cycle_end is None:
-                        instr_ref.mem_cycle_end = self.clock 
+                        
+                        instr_ref.mem_cycle_end = self.clock
+                        if rs_table.memory_occupied == True:
+                            rs_table.release_memory()
+
                 else:
                     if instr_ref and instr_ref.execute_end_cycle is None:
                         instr_ref.execute_end_cycle = self.clock 
@@ -874,6 +881,8 @@ class Architecture:
                 print(f"[COMMIT] Committing {value} to {alias} from {addr}")
                 
                 if (self.had_SD is not None and self.clock < self.commit_clock) or (self.previous_ROB == "sd" and self.clock < self.commit_clock and self.had_SD is not None):
+                    pass
+                elif self.clock > self.commit_clock and instr_ref.LD_SD_forward is not None:
                     pass
                 else:
                     self.commit_clock = self.clock

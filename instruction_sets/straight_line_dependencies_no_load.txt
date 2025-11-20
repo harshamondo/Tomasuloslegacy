@@ -1,4 +1,4 @@
-Add.d F1, F2, F3
+ld F1, 0(R3)
 Add.d F2, F1, F3
 Mult.d F2, F3, F4
 Sub.d F3, F5, F6

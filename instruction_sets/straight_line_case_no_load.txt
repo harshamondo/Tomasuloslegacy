@@ -1,3 +1,4 @@
+ld F1, 0(R3)
 Mult.d F1, F2, F3
 Add R3, R5, R4
 Sub R8, R9, R10

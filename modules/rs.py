@@ -99,6 +99,7 @@ class RS_Table:
             self.type = type
             self.num_units = num_rs_units
             self.num_FU_units = num_FU_units
+            self.memory_occupied = False
             self.cycles_per_instruction = cycles_per_instruction
             self.cycles_in_ex_b4_mem = load_store_address_calc
             self.busy_FU_units = 0
@@ -127,7 +128,12 @@ class RS_Table:
                   self.busy_FU_units += 1
                   return True
             return False
-            
+      def use_memory(self):
+            if self.memory_occupied == False:
+                  self.memory_occupied = True
+      def release_memory(self):
+            if self.memory_occupied == True:
+                  self.memory_occupied = False
       def release_fu_unit(self):
             if self.busy_FU_units > 0:
                   self.busy_FU_units -= 1
