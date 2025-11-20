@@ -61,7 +61,7 @@ def check_init():
     
     print("Initial ARF and RAT contents:")
     # print_ARF_RAT(loot)
-    total_cycles = 40
+    total_cycles = 100
 
     print(f"Current PC: {loot.PC}")
     for i in range(1,total_cycles):
