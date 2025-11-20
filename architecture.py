@@ -533,8 +533,7 @@ class Architecture:
                 rs_unit.value1 is not None and 
                 rs_unit.value2 is not None and 
                 rs_unit.cycles_left is None and 
-                rs_table.busy_FU_units <= rs_table.num_FU_units and
-                (rs_unit.opcode != "sd" or rs_unit.SD_value is not None)#SD_value here is the value needed for address calculation
+                rs_table.busy_FU_units <= rs_table.num_FU_units #SD_value here is the value needed for address calculation
             ):
 
                 print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2} for {rs_table.cycles_per_instruction} cycles.")
