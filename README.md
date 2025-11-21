@@ -134,7 +134,7 @@ The simulator includes test cases demonstrating CPU behavior:
 
 ### Roshan
 - Print Table (partial)  
-- Report & Documentation  
+- Report
 
 ## License
 
