@@ -690,6 +690,11 @@ class Architecture:
                                 instr_ref.mem_cycle_start = instr_ref.mem_cycle_end - mem_latency + 1
                             else:
                                 instr_ref.mem_cycle_start = instr_ref.mem_cycle_end
+                        if instr_ref.execute_end_cycle is None:
+                            if instr_ref.mem_cycle_start is not None:
+                                instr_ref.execute_end_cycle = instr_ref.mem_cycle_start - 1
+                            else:
+                                instr_ref.execute_end_cycle = instr_ref.mem_cycle_end
                         if rs_table.memory_occupied == True:
                             rs_table.release_memory()
 
