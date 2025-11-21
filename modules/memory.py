@@ -5,7 +5,7 @@ class memory:
     def read(self, address):
         # Default uninitialized memory locations to 0 so that
         # loads always produce a concrete value and can commit.
-        return self.data.get(address, None)
+        return self.data.get(address, 0)
 
     def write(self, address,value):
         self.data[address] = value

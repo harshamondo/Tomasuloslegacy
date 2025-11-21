@@ -181,13 +181,12 @@ class RS_Table:
             raise KeyError(f"Unknown opcode '{op_name}'. Registered ops: [{available}]")
 
       def length(self):
-            count = 0
-            for rs_unit in self.table:
-                  if rs_unit.cycles_left is None:
-                        count += 1
-                  elif rs_unit.cycles_left is not None and rs_unit.cycles_left > 0:
-                        count += 1
-            return count
+            # Reservation station entries occupy a slot until they are
+            # explicitly removed (after write-back/commit). Counting the
+            # actual entries prevents issue from reusing a slot in the same
+            # cycle an instruction finishes execution, preserving structural
+            # hazards for single-function-unit tables.
+            return len(self.table)
       
       def print_rs_without_intermediates(self):
             print(f"RS Table Type: {self.type}, Number of Units: {self.num_units}, Busy FU Units: {self.busy_FU_units}")
@@ -229,4 +228,3 @@ def rs_ld_op(self, rs_unit: RS_Unit):
 
 def rs_sd_op(self, rs_unit: RS_Unit):
       return rs_unit.value1 + rs_unit.value2
-

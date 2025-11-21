@@ -4,3 +4,4 @@ ld F6, 43(R7)
 Sub R8, R9, R10
 Addi R11, R11, 8
 Bne R2, R11, 0x0
+Add R10, R5, R4

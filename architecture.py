@@ -1,6 +1,7 @@
 from collections import deque
 import re
 import csv
+import copy
 
 from modules.instruction import Instruction
 from modules.rob import ROB
@@ -42,6 +43,8 @@ class Architecture:
 
         self.clock = 1
         self.PC = 0x0
+        # Monotonic sequence id for dynamic instructions (used for squash)
+        self.next_seq = 0
 
         self.previous_ROB = None
         #parsing code to set the number of functional units and reservation stations will go here
@@ -193,6 +196,11 @@ class Architecture:
         self.branch_ARF = None
         self.branch_RAT = None
         self.branch_all_rs_tables = None
+        self.branch_checkpoints = []
+        # Track ownership of the single load/store memory port so that
+        # ld/sd cannot overlap in the memory stage.
+        self.ls_mem_owner = None
+        self.store_mem_release_cycle = None
 
     def _resolve_ready_rs_sources(self, rs_unit):
         # Helper to resolve a single tag/value pair from ROB.
@@ -200,7 +208,10 @@ class Architecture:
             entry = self.ROB.read(tag_name)
             if entry:
                 _, value, done, _ = entry
-                if value is not None and done:
+                # For operand readiness we only care that a value exists;
+                # the ROB 'done' bit is for commit ordering, not for use
+                # by dependent instructions.
+                if value is not None:
                     return value
             return None
 
@@ -275,17 +286,18 @@ class Architecture:
         if not self.has_next():
             return None  # don't fetch out of bounds
 
-        template = self.pc_to_instr.get(self.PC)
+        pc = self.PC
+        template = self.pc_to_instr.get(pc)
         if template is None:
             return None
 
-        count = self.pc_fetch_count.get(self.PC, 0)
+        count = self.pc_fetch_count.get(pc, 0)
         if count == 0:
             # First time this PC is fetched, use the existing Instruction
             instr = template
         else:
             # Subsequent fetch of same PC, clone and append
-            # so timing table reflects executoin instance
+            # so timing table reflects execution instance
             instr = Instruction(template.opcode, list(template.operands))
 
             # branch is special
@@ -302,20 +314,61 @@ class Architecture:
             # Append cloned instance so it prints at the end
             self.instructions_in_flight.append(instr)
 
+        # Assign a unique dynamic sequence id for squash ordering
+        try:
+            instr.seq_id = self.next_seq
+        except Exception:
+            pass
+        self.next_seq += 1
         # Record the PC on the fetched instance for squash logic
         try:
-            instr.pc = self.PC
+            instr.pc = pc
         except Exception:
             pass
 
-        self.pc_fetch_count[self.PC] = count + 1
-        self.PC += 0x4
+        # Record the prediction used for this branch (for printing and recovery)
+        try:
+            op_code = (instr.opcode or "").lower()
+            if op_code in ("beq", "bne"):
+                pred_bit = self.BTB.find_prediction(pc)
+                # Default to "not taken" if no BTB entry exists yet
+                if pred_bit is None:
+                    instr.branch_pred = False
+                else:
+                    instr.branch_pred = bool(pred_bit)
+        except Exception:
+            try:
+                instr.branch_pred = False
+            except Exception:
+                pass
+
+        self.pc_fetch_count[pc] = count + 1
+
+        # Drive control flow using the prediction (if any)
+        next_pc = pc + 0x4
+        try:
+            op_code = (template.opcode or "").lower()
+            if op_code in ("beq", "bne"):
+                pred_bit = self.BTB.find_prediction(pc)
+                target = self.BTB.get_target(pc)
+                if pred_bit is not None and pred_bit == 1 and target is not None:
+                    # Ensure BTB target is an integer PC
+                    if isinstance(target, str):
+                        target_pc = int(target, 16) if target.lower().startswith("0x") else int(target)
+                    else:
+                        target_pc = int(target)
+                    next_pc = target_pc
+        except Exception:
+            pass
+
+        self.PC = next_pc
         return instr
 
     def has_next(self):
         return int(self.PC <= self.max_pc)
 
     def issue(self):
+        self._update_ls_memory_state()
         #add instructions into the RS if not full
         #think about how we are going to stall
         #ask prof if we need to have official states like fetch and decode since our instruction class already handles fetch+decode
@@ -492,8 +545,20 @@ class Architecture:
                 self.fs_branch.set_branch_offset(len(self.fs_branch.table) - 1, current_instruction.offset)
                 print(f"[DEBUG] Testing if branch gets to here {self.fs_branch}")
 
-                # add to the btb
-                self.BTB.add_branch(self.PC-0x4, current_instruction.offset)
+                # Add BTB entry only if this PC has not been seen before so that
+                # dynamic prediction bits trained by change_prediction are preserved.
+                try:
+                    branch_pc = self.PC - 0x4
+                    if self.BTB.get_target(branch_pc) is None:
+                        # Convert the encoded offset/target into an integer PC for bookkeeping.
+                        off = current_instruction.offset
+                        if isinstance(off, str):
+                            target_pc = int(off, 16) if off.lower().startswith("0x") else int(off)
+                        else:
+                            target_pc = int(off)
+                        self.BTB.add_branch(branch_pc, target_pc)
+                except Exception:
+                    pass
                 print(f"PC : {self.PC}")
                 print("[BRANCH] Printing BTB ")
                 print(self.BTB)
@@ -505,6 +570,7 @@ class Architecture:
                 self.branch_ARF = self.ARF
                 self.branch_RAT = self.RAT
                 self.branch_all_rs_tables = self.all_rs_tables
+                self._save_branch_checkpoint(current_instruction)
 
             else:
                 #stall due to full RS
@@ -605,6 +671,7 @@ class Architecture:
                             if rs_table.memory_occupied == False:
                                 instr_ref.mem_cycle_start = self.clock + 1
                                 rs_table.use_memory()
+                                self.ls_mem_owner = "ld"
                             else:
                                 rs_unit.cycles_left = rs_unit.cycles_left + 1
                     
@@ -623,8 +690,24 @@ class Architecture:
                     if instr_ref and instr_ref.mem_cycle_end is None:
                         
                         instr_ref.mem_cycle_end = self.clock
+                        # If a load finally exits memory but its start cycle was
+                        # never recorded (e.g., it waited for a busy LSU port),
+                        # backfill it from the known memory latency.
+                        if instr_ref.mem_cycle_start is None:
+                            mem_latency = getattr(rs_table, "cycles_per_instruction", 0) or 0
+                            if mem_latency > 0:
+                                instr_ref.mem_cycle_start = instr_ref.mem_cycle_end - mem_latency + 1
+                            else:
+                                instr_ref.mem_cycle_start = instr_ref.mem_cycle_end
+                        if instr_ref.execute_end_cycle is None:
+                            if instr_ref.mem_cycle_start is not None:
+                                instr_ref.execute_end_cycle = instr_ref.mem_cycle_start - 1
+                            else:
+                                instr_ref.execute_end_cycle = instr_ref.mem_cycle_end
                         if rs_table.memory_occupied == True:
                             rs_table.release_memory()
+                            if self.ls_mem_owner == "ld":
+                                self.ls_mem_owner = None
 
                 else:
                     if instr_ref and instr_ref.execute_end_cycle is None:
@@ -702,27 +785,61 @@ class Architecture:
                     if branch_instr is not None:
                         try:
                             branch_instr.branch_taken = bool(rs_unit.DST_value)
+                            # If we had a prediction, record if it was correct (for printing).
+                            if branch_instr.branch_pred is not None:
+                                branch_instr.branch_pred_correct = (
+                                    branch_instr.branch_pred == branch_instr.branch_taken
+                                )
                         except Exception:
                             branch_instr.branch_taken = None
 
-                    if rs_unit.DST_value:
+                    # Determine prediction vs actual outcome
+                    predicted_taken = False
+                    if branch_instr is not None and branch_instr.branch_pred is not None:
+                        predicted_taken = bool(branch_instr.branch_pred)
+                    actual_taken = bool(rs_unit.DST_value)
+                    branch_seq = getattr(branch_instr, "seq_id", None) if branch_instr is not None else None
+
+                    # Train BTB with the actual outcome
+                    try:
+                        if branch_instr is not None and getattr(branch_instr, "pc", None) is not None:
+                            self.BTB.change_prediction(branch_instr.pc, actual_taken)
+                    except Exception:
+                        pass
+
+                    mispredicted = (predicted_taken != actual_taken)
+
+                    if mispredicted and branch_seq is not None:
+                        # Target PC from encoded offset
                         if isinstance(off, str):
-                            off = int(off, 16) if off.lower().startswith("0x") else int(off)
+                            target_pc = int(off, 16) if off.lower().startswith("0x") else int(off)
+                        else:
+                            target_pc = int(off)
 
-                        oldPC = self.PC
-                        # New PC
-                        self.PC = off 
-
-                        # remove the branch RS entry now that its resolved
-                        # rs_table.table.remove(rs_unit)
-                        print(f"[BRANCH] Resolved: offset={off}, new PC={self.PC}, old PC={oldPC}")
-                        # Squash fall-through path instructions fetched after this branch
+                        # Branch PC and fall-through PC
                         try:
-                            if branch_instr is not None and getattr(branch_instr, "pc", None) is not None:
-                                self._squash_after_branch_taken(branch_instr.pc)
+                            branch_pc = getattr(branch_instr, "pc", None)
                         except Exception:
-                            pass
-                    
+                            branch_pc = None
+                        fallthrough_pc = (branch_pc + 0x4) if branch_pc is not None else None
+
+                        if actual_taken and not predicted_taken:
+                            # Predicted Not Taken, actually Taken: squash fall-through, jump to target
+                            oldPC = self.PC
+                            self.PC = target_pc
+                            print(f"[BRANCH] MISPREDICT NT->T: target={target_pc}, old PC={oldPC}, branch PC={branch_pc}")
+                        elif (not actual_taken) and predicted_taken:
+                            # Predicted Taken, actually Not Taken: squash taken path, jump to fall-through
+                            if fallthrough_pc is not None:
+                                oldPC = self.PC
+                                self.PC = fallthrough_pc
+                                print(f"[BRANCH] MISPREDICT T->NT: fallthrough={fallthrough_pc}, old PC={oldPC}, branch PC={branch_pc}")
+                        # Squash all younger dynamic instructions regardless of path
+                        self._squash_younger_than_seq(branch_seq)
+                        self._restore_branch_checkpoint(branch_seq)
+                    elif branch_seq is not None:
+                        self._discard_branch_checkpoint(branch_seq)
+
                     # Remove the branch RS entry (taken or not taken) since it is resolved
                     try:
                         rs_table.table.remove(rs_unit)
@@ -740,6 +857,7 @@ class Architecture:
         rs_table.release_all_fu_units()
 
     def execute(self):
+        self._update_ls_memory_state()
         # Execute logic for Floating Point Adder/Subtracter RS
         for rs_table in self.all_rs_tables:
             print(f"SIZE OF ALL RS TABLES: {len(rs_table.table)}")
@@ -756,22 +874,22 @@ class Architecture:
             pass
         return None
 
-    # squash all in-flight instructions after a taken branch
-    def _squash_after_branch_taken(self, branch_pc: int):
-        fallthrough_pc = branch_pc + 0x4
+    # Squash all in-flight instructions younger than a given dynamic sequence id
+    def _squash_younger_than_seq(self, branch_seq: int):
+        # Identify instructions to squash: those fetched after this branch
+        to_squash = [
+            instr for instr in list(self.instructions_in_flight)
+            if getattr(instr, "seq_id", -1) > branch_seq
+        ]
 
-        # Identify instructions to squash fetched from fall-through path
-        to_squash = [instr for instr in list(self.instructions_in_flight)
-                     if getattr(instr, 'pc', None) is not None and instr.pc >= fallthrough_pc]
-
-        # Build a set for squashable values
+        # Build a set for squashable ROB tags
         tags = set(instr.rob_tag for instr in to_squash if instr.rob_tag is not None)
 
         # Remove matching RS entries across all tables
         for rs_table in self.all_rs_tables:
             new_table = []
             for rs_unit in rs_table.table:
-                if getattr(rs_unit, 'DST_tag', None) in tags:
+                if getattr(rs_unit, "DST_tag", None) in tags:
                     continue
                 new_table.append(rs_unit)
             rs_table.table = new_table
@@ -796,7 +914,44 @@ class Architecture:
                         self.RAT.write(instr.dest, alias)
 
         # Remove squashed instructions from printing list
-        self.instructions_in_flight = [instr for instr in self.instructions_in_flight if instr not in to_squash]
+        self.instructions_in_flight = [
+            instr for instr in self.instructions_in_flight if instr not in to_squash
+        ]
+
+    def _save_branch_checkpoint(self, instr):
+        seq_id = getattr(instr, "seq_id", None)
+        if seq_id is None:
+            return
+        snapshot = {
+            "seq": seq_id,
+            "pc": getattr(instr, "pc", None),
+            "rat": copy.deepcopy(getattr(self.RAT, "data", {})),
+        }
+        self.branch_checkpoints.append(snapshot)
+
+    def _restore_branch_checkpoint(self, seq_id):
+        while self.branch_checkpoints:
+            snapshot = self.branch_checkpoints.pop()
+            if snapshot.get("seq") == seq_id:
+                self.RAT.data = copy.deepcopy(snapshot.get("rat", {}))
+                break
+
+    def _discard_branch_checkpoint(self, seq_id):
+        while self.branch_checkpoints:
+            snapshot = self.branch_checkpoints.pop()
+            if snapshot.get("seq") == seq_id:
+                break
+
+    def _update_ls_memory_state(self):
+        # Release the shared LS memory port when a queued store's
+        # memory window has elapsed.
+        if self.ls_mem_owner == "sd" and self.store_mem_release_cycle is not None:
+            if self.clock >= self.store_mem_release_cycle:
+                if self.fs_LS.memory_occupied:
+                    self.fs_LS.release_memory()
+                self.ls_mem_owner = None
+                self.store_mem_release_cycle = None
+
     def memory(self):
         # this stage is only for ld
         # integrate this into execute
@@ -901,6 +1056,7 @@ class Architecture:
     
     # COMMIT --------------------------------------------------------------
     def commit(self):
+        self._update_ls_memory_state()
         if self.ROB.getEntries() > 0:
             #Peak the front
             addr, (alias, value, done, instr_ref) = self.ROB.peek()
@@ -914,6 +1070,21 @@ class Architecture:
 
                 
                 if instr_ref is not None and instr_ref.opcode == "sd":
+                    # Enforce exclusive access to the memory port shared with loads.
+                    if self.fs_LS.memory_occupied and self.ls_mem_owner != "sd":
+                        print("[COMMIT] Store waiting for memory port to become free.")
+                        return
+                    if (
+                        self.ls_mem_owner == "sd"
+                        and self.store_mem_release_cycle is not None
+                        and self.clock < self.store_mem_release_cycle
+                    ):
+                        print("[COMMIT] Store memory stage still busy, delaying commit.")
+                        return
+                    if self.fs_LS.memory_occupied is False:
+                        self.fs_LS.use_memory()
+                    self.ls_mem_owner = "sd"
+                    self.store_mem_release_cycle = self.clock + self.fs_LS.cycles_per_instruction
                     # Stores do not write a value to ARF but we still
                     # want to record when their commit stage happens
                     self.had_SD = True
@@ -973,4 +1144,3 @@ class Architecture:
                     if value is not None and done is not True:
                         print(f"[COMMIT] Waiting 1 cycle to commit {value} to {alias} from {rob_entry_key}")
                         self.ROB.update_done(rob_entry_key, True)
-
