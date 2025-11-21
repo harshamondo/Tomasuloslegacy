@@ -1,2 +1,2 @@
 sd R1, 0(R2)
-ld R4, 0(R2)
+Add R4, R5, R6

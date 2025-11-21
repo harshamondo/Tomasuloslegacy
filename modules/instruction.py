@@ -36,6 +36,9 @@ class Instruction:
 		# Branch outcome: True (Taken), False (Not Taken), or None (N/A)
 		self.branch_taken = None
 
+		self.instr_dest = None
+		self.instr_value = None
+
 		# Parse operands for specific opcodes
 		if opcode is not None and operands is not None:
 			op = opcode.lower()

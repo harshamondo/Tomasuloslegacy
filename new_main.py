@@ -107,7 +107,7 @@ def check_init():
 
    # print(f"Final ARF and RAT contents after {total_cycles} issue/execute cycles:")
     print_ARF_RAT(loot)
-    print_ROB(loot)
+    #print_ROB(loot)
 
     print_timing_table(loot.instructions_in_flight)
     #for store word test

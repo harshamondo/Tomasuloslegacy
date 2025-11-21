@@ -563,7 +563,7 @@ class Architecture:
                 rs_unit.value1 is not None and 
                 rs_unit.value2 is not None and 
                 rs_unit.cycles_left is None and 
-                rs_table.busy_FU_units <= rs_table.num_FU_units #SD_value here is the value needed for address calculation
+                rs_table.busy_FU_units <= rs_table.num_FU_units and (rs_unit.opcode != "sd" or rs_unit.SD_value is not None) #SD_value here is the value needed for address calculation
             ):
 
                 print(f"[EXECUTE] Starting execution of {rs_unit.opcode} for "f"destination {rs_unit.DST_tag} with values {rs_unit.value1} and {rs_unit.value2} for {rs_table.cycles_per_instruction} cycles.")
@@ -646,7 +646,7 @@ class Architecture:
                         for i in self.temp_LS:
                             temp_res, memory_addy = i
                             #a older RS queue entry's target address matches the ld's target address
-                            if memory_addy == rs_unit.DST_value:
+                            if memory_addy == rs_unit.DST_value and rs_unit.opcode == "sd":
                                 #self.ARF.write(rs_unit.DST_tag,self.ARF.read(rs_table.table[i].DST_tag))
 
                                 #print(f"DEBUG: {rs_unit.DST_tag}")
@@ -660,9 +660,16 @@ class Architecture:
 
                 if rs_unit.opcode == "sd":
 
-                    SD_res = self.ARF.read(rs_unit.SD_dest)
-                    self.MEM.write(rs_unit.DST_value,SD_res)
-                    self.temp_LS.append((SD_res,rs_unit.DST_value))
+                    #SD_res = self.ARF.read(rs_unit.SD_dest)
+                    #print(f"CURR DEBUG {rs_unit.SD_dest}")
+                    #self.MEM.write(rs_unit.DST_value,SD_res)
+                    #print(f"CURR DEBUG {rs_unit.DST_value}")
+                    #print(f"CURR DEBUG {SD_res}")
+
+                    instr_ref.instr_dest = rs_unit.DST_value
+                    instr_ref.instr_value = rs_unit.SD_dest
+                    #self.temp_LS.append((SD_res,rs_unit.DST_value))
+                    
                     # Mark the store as completed in the ROB so it
                     # can commit without going through the CDB path.
                     try:
@@ -846,7 +853,6 @@ class Architecture:
                     break # Only handle one per requirements
 
         # Next, handle the Common Data Bus (CDB) updates
-        print(f"CURRENT DEBUG: {len(self.CDB)}")
         if len(self.CDB) > 0:
             CDB_res_reg, arf_reg, result, instr_ref = self.CDB.pop()
         
@@ -906,6 +912,7 @@ class Architecture:
                 addr = self.ROB.find_by_alias(alias)
                 print(f"[COMMIT] Committing {value} to {alias} from {addr}")
 
+                
                 if instr_ref is not None and instr_ref.opcode == "sd":
                     # Stores do not write a value to ARF but we still
                     # want to record when their commit stage happens
@@ -917,6 +924,12 @@ class Architecture:
                             instr_ref.commit_cycle + self.fs_LS.cycles_per_instruction - 1
                         )
 
+                        self.clock = instr_ref.commit_cycle_SD - 1
+
+                    SD_res = self.ARF.read(instr_ref.instr_value)
+                    self.MEM.write(instr_ref.instr_dest,SD_res)
+
+
                 elif instr_ref is not None and (instr_ref.opcode == "Beq" or instr_ref.opcode == "Bne"):
                     # Branch commits do not update ARF/RAT; just record commit timing
                     if instr_ref.commit_cycle is None:
@@ -926,6 +939,7 @@ class Architecture:
 
                         if instr_ref.LD_SD_forward is not None:
                             self.ARF.write(alias,instr_ref.LD_SD_forward)
+
                         else:
                             self.ARF.write(alias, value)           
 
