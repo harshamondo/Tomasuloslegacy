@@ -14,6 +14,8 @@ class Instruction:
 		self.immediate = None
 		# PC of this fetched instance (set during fetch)
 		self.pc = None
+		# Monotonic sequence id for dynamic ordering (set during fetch)
+		self.seq_id = None
 
 		self.rob_tag = None
 		self.issue_cycle = None

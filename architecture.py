@@ -42,6 +42,8 @@ class Architecture:
 
         self.clock = 1
         self.PC = 0x0
+        # Monotonic sequence id for dynamic instructions (used for squash)
+        self.next_seq = 0
 
         self.previous_ROB = None
         #parsing code to set the number of functional units and reservation stations will go here
@@ -278,17 +280,18 @@ class Architecture:
         if not self.has_next():
             return None  # don't fetch out of bounds
 
-        template = self.pc_to_instr.get(self.PC)
+        pc = self.PC
+        template = self.pc_to_instr.get(pc)
         if template is None:
             return None
 
-        count = self.pc_fetch_count.get(self.PC, 0)
+        count = self.pc_fetch_count.get(pc, 0)
         if count == 0:
             # First time this PC is fetched, use the existing Instruction
             instr = template
         else:
             # Subsequent fetch of same PC, clone and append
-            # so timing table reflects executoin instance
+            # so timing table reflects execution instance
             instr = Instruction(template.opcode, list(template.operands))
 
             # branch is special
@@ -305,14 +308,54 @@ class Architecture:
             # Append cloned instance so it prints at the end
             self.instructions_in_flight.append(instr)
 
+        # Assign a unique dynamic sequence id for squash ordering
+        try:
+            instr.seq_id = self.next_seq
+        except Exception:
+            pass
+        self.next_seq += 1
         # Record the PC on the fetched instance for squash logic
         try:
-            instr.pc = self.PC
+            instr.pc = pc
         except Exception:
             pass
 
-        self.pc_fetch_count[self.PC] = count + 1
-        self.PC += 0x4
+        # Record the prediction used for this branch (for printing and recovery)
+        try:
+            op_code = (instr.opcode or "").lower()
+            if op_code in ("beq", "bne"):
+                pred_bit = self.BTB.find_prediction(pc)
+                # Default to "not taken" if no BTB entry exists yet
+                if pred_bit is None:
+                    instr.branch_pred = False
+                else:
+                    instr.branch_pred = bool(pred_bit)
+        except Exception:
+            try:
+                instr.branch_pred = False
+            except Exception:
+                pass
+
+        self.pc_fetch_count[pc] = count + 1
+
+        # Drive control flow using the prediction (if any)
+        next_pc = pc + 0x4
+        try:
+            op_code = (template.opcode or "").lower()
+            if op_code in ("beq", "bne"):
+                pred_bit = self.BTB.find_prediction(pc)
+                target = self.BTB.get_target(pc)
+                if pred_bit is not None and pred_bit == 1 and target is not None:
+                    # Ensure BTB target is an integer PC
+                    if isinstance(target, str):
+                        target_pc = int(target, 16) if target.lower().startswith("0x") else int(target)
+                    else:
+                        target_pc = int(target)
+                    next_pc = target_pc
+        except Exception:
+            pass
+
+        self.PC = next_pc
         return instr
 
     def has_next(self):
@@ -490,25 +533,25 @@ class Architecture:
                 )
                 branch_rs.add_instr_ref(current_instruction)
                 self._resolve_ready_rs_sources(branch_rs)
-                # Capture BTB prediction (if any) for this branch so it
-                # can be printed later in the timing table.
-                try:
-                    branch_pc = self.PC - 0x4
-                    pred_bit = self.BTB.find_prediction(branch_pc)
-                    if pred_bit is None:
-                        current_instruction.branch_pred = None
-                    else:
-                        current_instruction.branch_pred = bool(pred_bit)
-                except Exception:
-                    current_instruction.branch_pred = None
-
                 self.fs_branch.table.append(branch_rs)
                 # set offset for the newly added branch entry
                 self.fs_branch.set_branch_offset(len(self.fs_branch.table) - 1, current_instruction.offset)
                 print(f"[DEBUG] Testing if branch gets to here {self.fs_branch}")
 
-                # add to the btb
-                self.BTB.add_branch(self.PC-0x4, current_instruction.offset)
+                # Add BTB entry only if this PC has not been seen before so that
+                # dynamic prediction bits trained by change_prediction are preserved.
+                try:
+                    branch_pc = self.PC - 0x4
+                    if self.BTB.get_target(branch_pc) is None:
+                        # Convert the encoded offset/target into an integer PC for bookkeeping.
+                        off = current_instruction.offset
+                        if isinstance(off, str):
+                            target_pc = int(off, 16) if off.lower().startswith("0x") else int(off)
+                        else:
+                            target_pc = int(off)
+                        self.BTB.add_branch(branch_pc, target_pc)
+                except Exception:
+                    pass
                 print(f"PC : {self.PC}")
                 print("[BRANCH] Printing BTB ")
                 print(self.BTB)
@@ -717,7 +760,7 @@ class Architecture:
                     if branch_instr is not None:
                         try:
                             branch_instr.branch_taken = bool(rs_unit.DST_value)
-                            # If we had a prediction, record if it was correct.
+                            # If we had a prediction, record if it was correct (for printing).
                             if branch_instr.branch_pred is not None:
                                 branch_instr.branch_pred_correct = (
                                     branch_instr.branch_pred == branch_instr.branch_taken
@@ -725,32 +768,51 @@ class Architecture:
                         except Exception:
                             branch_instr.branch_taken = None
 
-                    # Update BTB prediction for this branch PC so that future
-                    # fetches see the latest direction.
+                    # Determine prediction vs actual outcome
+                    predicted_taken = False
+                    if branch_instr is not None and branch_instr.branch_pred is not None:
+                        predicted_taken = bool(branch_instr.branch_pred)
+                    actual_taken = bool(rs_unit.DST_value)
+
+                    # Train BTB with the actual outcome
                     try:
                         if branch_instr is not None and getattr(branch_instr, "pc", None) is not None:
-                            self.BTB.change_prediction(branch_instr.pc, bool(rs_unit.DST_value))
+                            self.BTB.change_prediction(branch_instr.pc, actual_taken)
                     except Exception:
                         pass
 
-                    if rs_unit.DST_value:
+                    mispredicted = (predicted_taken != actual_taken)
+
+                    if mispredicted and branch_instr is not None and getattr(branch_instr, "seq_id", None) is not None:
+                        branch_seq = branch_instr.seq_id
+
+                        # Target PC from encoded offset
                         if isinstance(off, str):
-                            off = int(off, 16) if off.lower().startswith("0x") else int(off)
+                            target_pc = int(off, 16) if off.lower().startswith("0x") else int(off)
+                        else:
+                            target_pc = int(off)
 
-                        oldPC = self.PC
-                        # New PC
-                        self.PC = off 
-
-                        # remove the branch RS entry now that its resolved
-                        # rs_table.table.remove(rs_unit)
-                        print(f"[BRANCH] Resolved: offset={off}, new PC={self.PC}, old PC={oldPC}")
-                        # Squash fall-through path instructions fetched after this branch
+                        # Branch PC and fall-through PC
                         try:
-                            if branch_instr is not None and getattr(branch_instr, "pc", None) is not None:
-                                self._squash_after_branch_taken(branch_instr.pc)
+                            branch_pc = getattr(branch_instr, "pc", None)
                         except Exception:
-                            pass
-                    
+                            branch_pc = None
+                        fallthrough_pc = (branch_pc + 0x4) if branch_pc is not None else None
+
+                        if actual_taken and not predicted_taken:
+                            # Predicted Not Taken, actually Taken: squash fall-through, jump to target
+                            oldPC = self.PC
+                            self.PC = target_pc
+                            print(f"[BRANCH] MISPREDICT NT->T: target={target_pc}, old PC={oldPC}, branch PC={branch_pc}")
+                        elif (not actual_taken) and predicted_taken:
+                            # Predicted Taken, actually Not Taken: squash taken path, jump to fall-through
+                            if fallthrough_pc is not None:
+                                oldPC = self.PC
+                                self.PC = fallthrough_pc
+                                print(f"[BRANCH] MISPREDICT T->NT: fallthrough={fallthrough_pc}, old PC={oldPC}, branch PC={branch_pc}")
+                        # Squash all younger dynamic instructions regardless of path
+                        self._squash_younger_than_seq(branch_seq)
+
                     # Remove the branch RS entry (taken or not taken) since it is resolved
                     try:
                         rs_table.table.remove(rs_unit)
@@ -784,22 +846,22 @@ class Architecture:
             pass
         return None
 
-    # squash all in-flight instructions after a taken branch
-    def _squash_after_branch_taken(self, branch_pc: int):
-        fallthrough_pc = branch_pc + 0x4
+    # Squash all in-flight instructions younger than a given dynamic sequence id
+    def _squash_younger_than_seq(self, branch_seq: int):
+        # Identify instructions to squash: those fetched after this branch
+        to_squash = [
+            instr for instr in list(self.instructions_in_flight)
+            if getattr(instr, "seq_id", -1) > branch_seq
+        ]
 
-        # Identify instructions to squash fetched from fall-through path
-        to_squash = [instr for instr in list(self.instructions_in_flight)
-                     if getattr(instr, 'pc', None) is not None and instr.pc >= fallthrough_pc]
-
-        # Build a set for squashable values
+        # Build a set for squashable ROB tags
         tags = set(instr.rob_tag for instr in to_squash if instr.rob_tag is not None)
 
         # Remove matching RS entries across all tables
         for rs_table in self.all_rs_tables:
             new_table = []
             for rs_unit in rs_table.table:
-                if getattr(rs_unit, 'DST_tag', None) in tags:
+                if getattr(rs_unit, "DST_tag", None) in tags:
                     continue
                 new_table.append(rs_unit)
             rs_table.table = new_table
@@ -824,7 +886,9 @@ class Architecture:
                         self.RAT.write(instr.dest, alias)
 
         # Remove squashed instructions from printing list
-        self.instructions_in_flight = [instr for instr in self.instructions_in_flight if instr not in to_squash]
+        self.instructions_in_flight = [
+            instr for instr in self.instructions_in_flight if instr not in to_squash
+        ]
     def memory(self):
         # this stage is only for ld
         # integrate this into execute
