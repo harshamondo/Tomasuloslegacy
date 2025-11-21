@@ -681,6 +681,15 @@ class Architecture:
                     if instr_ref and instr_ref.mem_cycle_end is None:
                         
                         instr_ref.mem_cycle_end = self.clock
+                        # If a load finally exits memory but its start cycle was
+                        # never recorded (e.g., it waited for a busy LSU port),
+                        # backfill it from the known memory latency.
+                        if instr_ref.mem_cycle_start is None:
+                            mem_latency = getattr(rs_table, "cycles_per_instruction", 0) or 0
+                            if mem_latency > 0:
+                                instr_ref.mem_cycle_start = instr_ref.mem_cycle_end - mem_latency + 1
+                            else:
+                                instr_ref.mem_cycle_start = instr_ref.mem_cycle_end
                         if rs_table.memory_occupied == True:
                             rs_table.release_memory()
 
@@ -1065,4 +1074,3 @@ class Architecture:
                     if value is not None and done is not True:
                         print(f"[COMMIT] Waiting 1 cycle to commit {value} to {alias} from {rob_entry_key}")
                         self.ROB.update_done(rob_entry_key, True)
-
