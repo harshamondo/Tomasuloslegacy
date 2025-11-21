@@ -1,6 +1,7 @@
 from collections import deque
 import re
 import csv
+import copy
 
 from modules.instruction import Instruction
 from modules.rob import ROB
@@ -195,6 +196,7 @@ class Architecture:
         self.branch_ARF = None
         self.branch_RAT = None
         self.branch_all_rs_tables = None
+        self.branch_checkpoints = []
         # Track ownership of the single load/store memory port so that
         # ld/sd cannot overlap in the memory stage.
         self.ls_mem_owner = None
@@ -568,6 +570,7 @@ class Architecture:
                 self.branch_ARF = self.ARF
                 self.branch_RAT = self.RAT
                 self.branch_all_rs_tables = self.all_rs_tables
+                self._save_branch_checkpoint(current_instruction)
 
             else:
                 #stall due to full RS
@@ -795,6 +798,7 @@ class Architecture:
                     if branch_instr is not None and branch_instr.branch_pred is not None:
                         predicted_taken = bool(branch_instr.branch_pred)
                     actual_taken = bool(rs_unit.DST_value)
+                    branch_seq = getattr(branch_instr, "seq_id", None) if branch_instr is not None else None
 
                     # Train BTB with the actual outcome
                     try:
@@ -805,9 +809,7 @@ class Architecture:
 
                     mispredicted = (predicted_taken != actual_taken)
 
-                    if mispredicted and branch_instr is not None and getattr(branch_instr, "seq_id", None) is not None:
-                        branch_seq = branch_instr.seq_id
-
+                    if mispredicted and branch_seq is not None:
                         # Target PC from encoded offset
                         if isinstance(off, str):
                             target_pc = int(off, 16) if off.lower().startswith("0x") else int(off)
@@ -834,6 +836,9 @@ class Architecture:
                                 print(f"[BRANCH] MISPREDICT T->NT: fallthrough={fallthrough_pc}, old PC={oldPC}, branch PC={branch_pc}")
                         # Squash all younger dynamic instructions regardless of path
                         self._squash_younger_than_seq(branch_seq)
+                        self._restore_branch_checkpoint(branch_seq)
+                    elif branch_seq is not None:
+                        self._discard_branch_checkpoint(branch_seq)
 
                     # Remove the branch RS entry (taken or not taken) since it is resolved
                     try:
@@ -912,6 +917,30 @@ class Architecture:
         self.instructions_in_flight = [
             instr for instr in self.instructions_in_flight if instr not in to_squash
         ]
+
+    def _save_branch_checkpoint(self, instr):
+        seq_id = getattr(instr, "seq_id", None)
+        if seq_id is None:
+            return
+        snapshot = {
+            "seq": seq_id,
+            "pc": getattr(instr, "pc", None),
+            "rat": copy.deepcopy(getattr(self.RAT, "data", {})),
+        }
+        self.branch_checkpoints.append(snapshot)
+
+    def _restore_branch_checkpoint(self, seq_id):
+        while self.branch_checkpoints:
+            snapshot = self.branch_checkpoints.pop()
+            if snapshot.get("seq") == seq_id:
+                self.RAT.data = copy.deepcopy(snapshot.get("rat", {}))
+                break
+
+    def _discard_branch_checkpoint(self, seq_id):
+        while self.branch_checkpoints:
+            snapshot = self.branch_checkpoints.pop()
+            if snapshot.get("seq") == seq_id:
+                break
 
     def _update_ls_memory_state(self):
         # Release the shared LS memory port when a queued store's
