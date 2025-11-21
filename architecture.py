@@ -195,6 +195,10 @@ class Architecture:
         self.branch_ARF = None
         self.branch_RAT = None
         self.branch_all_rs_tables = None
+        # Track ownership of the single load/store memory port so that
+        # ld/sd cannot overlap in the memory stage.
+        self.ls_mem_owner = None
+        self.store_mem_release_cycle = None
 
     def _resolve_ready_rs_sources(self, rs_unit):
         # Helper to resolve a single tag/value pair from ROB.
@@ -362,6 +366,7 @@ class Architecture:
         return int(self.PC <= self.max_pc)
 
     def issue(self):
+        self._update_ls_memory_state()
         #add instructions into the RS if not full
         #think about how we are going to stall
         #ask prof if we need to have official states like fetch and decode since our instruction class already handles fetch+decode
@@ -663,6 +668,7 @@ class Architecture:
                             if rs_table.memory_occupied == False:
                                 instr_ref.mem_cycle_start = self.clock + 1
                                 rs_table.use_memory()
+                                self.ls_mem_owner = "ld"
                             else:
                                 rs_unit.cycles_left = rs_unit.cycles_left + 1
                     
@@ -697,6 +703,8 @@ class Architecture:
                                 instr_ref.execute_end_cycle = instr_ref.mem_cycle_end
                         if rs_table.memory_occupied == True:
                             rs_table.release_memory()
+                            if self.ls_mem_owner == "ld":
+                                self.ls_mem_owner = None
 
                 else:
                     if instr_ref and instr_ref.execute_end_cycle is None:
@@ -844,6 +852,7 @@ class Architecture:
         rs_table.release_all_fu_units()
 
     def execute(self):
+        self._update_ls_memory_state()
         # Execute logic for Floating Point Adder/Subtracter RS
         for rs_table in self.all_rs_tables:
             print(f"SIZE OF ALL RS TABLES: {len(rs_table.table)}")
@@ -903,6 +912,17 @@ class Architecture:
         self.instructions_in_flight = [
             instr for instr in self.instructions_in_flight if instr not in to_squash
         ]
+
+    def _update_ls_memory_state(self):
+        # Release the shared LS memory port when a queued store's
+        # memory window has elapsed.
+        if self.ls_mem_owner == "sd" and self.store_mem_release_cycle is not None:
+            if self.clock >= self.store_mem_release_cycle:
+                if self.fs_LS.memory_occupied:
+                    self.fs_LS.release_memory()
+                self.ls_mem_owner = None
+                self.store_mem_release_cycle = None
+
     def memory(self):
         # this stage is only for ld
         # integrate this into execute
@@ -1007,6 +1027,7 @@ class Architecture:
     
     # COMMIT --------------------------------------------------------------
     def commit(self):
+        self._update_ls_memory_state()
         if self.ROB.getEntries() > 0:
             #Peak the front
             addr, (alias, value, done, instr_ref) = self.ROB.peek()
@@ -1020,6 +1041,21 @@ class Architecture:
 
                 
                 if instr_ref is not None and instr_ref.opcode == "sd":
+                    # Enforce exclusive access to the memory port shared with loads.
+                    if self.fs_LS.memory_occupied and self.ls_mem_owner != "sd":
+                        print("[COMMIT] Store waiting for memory port to become free.")
+                        return
+                    if (
+                        self.ls_mem_owner == "sd"
+                        and self.store_mem_release_cycle is not None
+                        and self.clock < self.store_mem_release_cycle
+                    ):
+                        print("[COMMIT] Store memory stage still busy, delaying commit.")
+                        return
+                    if self.fs_LS.memory_occupied is False:
+                        self.fs_LS.use_memory()
+                    self.ls_mem_owner = "sd"
+                    self.store_mem_release_cycle = self.clock + self.fs_LS.cycles_per_instruction
                     # Stores do not write a value to ARF but we still
                     # want to record when their commit stage happens
                     self.had_SD = True
