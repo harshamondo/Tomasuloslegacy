@@ -35,6 +35,10 @@ class Instruction:
 
 		# Branch outcome: True (Taken), False (Not Taken), or None (N/A)
 		self.branch_taken = None
+		# Branch prediction (from BTB or policy): True (Taken), False (Not Taken), or None (no prediction)
+		self.branch_pred = None
+		# Whether the prediction matched the outcome: True, False, or None (N/A / no prediction)
+		self.branch_pred_correct = None
 
 		self.instr_dest = None
 		self.instr_value = None

@@ -200,7 +200,10 @@ class Architecture:
             entry = self.ROB.read(tag_name)
             if entry:
                 _, value, done, _ = entry
-                if value is not None and done:
+                # For operand readiness we only care that a value exists;
+                # the ROB 'done' bit is for commit ordering, not for use
+                # by dependent instructions.
+                if value is not None:
                     return value
             return None
 
@@ -487,6 +490,18 @@ class Architecture:
                 )
                 branch_rs.add_instr_ref(current_instruction)
                 self._resolve_ready_rs_sources(branch_rs)
+                # Capture BTB prediction (if any) for this branch so it
+                # can be printed later in the timing table.
+                try:
+                    branch_pc = self.PC - 0x4
+                    pred_bit = self.BTB.find_prediction(branch_pc)
+                    if pred_bit is None:
+                        current_instruction.branch_pred = None
+                    else:
+                        current_instruction.branch_pred = bool(pred_bit)
+                except Exception:
+                    current_instruction.branch_pred = None
+
                 self.fs_branch.table.append(branch_rs)
                 # set offset for the newly added branch entry
                 self.fs_branch.set_branch_offset(len(self.fs_branch.table) - 1, current_instruction.offset)
@@ -702,8 +717,21 @@ class Architecture:
                     if branch_instr is not None:
                         try:
                             branch_instr.branch_taken = bool(rs_unit.DST_value)
+                            # If we had a prediction, record if it was correct.
+                            if branch_instr.branch_pred is not None:
+                                branch_instr.branch_pred_correct = (
+                                    branch_instr.branch_pred == branch_instr.branch_taken
+                                )
                         except Exception:
                             branch_instr.branch_taken = None
+
+                    # Update BTB prediction for this branch PC so that future
+                    # fetches see the latest direction.
+                    try:
+                        if branch_instr is not None and getattr(branch_instr, "pc", None) is not None:
+                            self.BTB.change_prediction(branch_instr.pc, bool(rs_unit.DST_value))
+                    except Exception:
+                        pass
 
                     if rs_unit.DST_value:
                         if isinstance(off, str):

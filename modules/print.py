@@ -15,7 +15,8 @@ def print_timing_table(instructions):
         "Write Back",
         "Commit",
         "Commit(SD)",
-        "Branch"
+        "Branch",
+        "Predicted"
     ]
     
     # Calculate initial column widths based on headers
@@ -32,11 +33,22 @@ def print_timing_table(instructions):
 
         # Collect cycle data, using '-' for uncompleted stages
         # Branch outcome text if applicable
+        is_branch = str(instr.opcode).lower() in ("beq", "bne")
         branch_outcome = (
             ("Taken" if instr.branch_taken else "Not Taken")
-            if instr.branch_taken is not None and str(instr.opcode).lower() in ("beq", "bne")
+            if instr.branch_taken is not None and is_branch
             else "-"
         )
+        # Branch prediction text if applicable
+        if is_branch and instr.branch_pred is not None:
+            pred_text = "Taken" if instr.branch_pred else "Not Taken"
+            # Optionally annotate correctness
+            if instr.branch_pred_correct is True:
+                pred_text += " (Correct)"
+            elif instr.branch_pred_correct is False:
+                pred_text += " (Wrong)"
+        else:
+            pred_text = "-"
 
         row = [
             instr_str,
@@ -48,7 +60,8 @@ def print_timing_table(instructions):
             str(instr.write_back_cycle) if instr.write_back_cycle is not None else "-",
             str(instr.commit_cycle) if instr.commit_cycle is not None else "-",
             str(instr.commit_cycle_SD) if instr.commit_cycle_SD is not None else "-",
-            branch_outcome
+            branch_outcome,
+            pred_text
 
         ]
         data_rows.append(row)
