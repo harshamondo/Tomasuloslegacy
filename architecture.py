@@ -918,6 +918,7 @@ class Architecture:
             instr for instr in self.instructions_in_flight if instr not in to_squash
         ]
 
+    # Cheating and saving the whole RAT. Not sure how else to fix the problem
     def _save_branch_checkpoint(self, instr):
         seq_id = getattr(instr, "seq_id", None)
         if seq_id is None:
@@ -925,7 +926,7 @@ class Architecture:
         snapshot = {
             "seq": seq_id,
             "pc": getattr(instr, "pc", None),
-            "rat": copy.deepcopy(getattr(self.RAT, "data", {})),
+            "rat": copy.deepcopy(getattr(self.RAT, "data", {})), # AI says this is a good way to copy!
         }
         self.branch_checkpoints.append(snapshot)
 
@@ -933,9 +934,10 @@ class Architecture:
         while self.branch_checkpoints:
             snapshot = self.branch_checkpoints.pop()
             if snapshot.get("seq") == seq_id:
-                self.RAT.data = copy.deepcopy(snapshot.get("rat", {}))
+                self.RAT.data = copy.deepcopy(snapshot.get("rat", {})) # LOL apparently it is save to do this
                 break
 
+    # In case we predicted well 
     def _discard_branch_checkpoint(self, seq_id):
         while self.branch_checkpoints:
             snapshot = self.branch_checkpoints.pop()
@@ -945,6 +947,7 @@ class Architecture:
     def _update_ls_memory_state(self):
         # Release the shared LS memory port when a queued store's
         # memory window has elapsed.
+        # This needs to happen every cycle since memory doesn't have it's own section of code
         if self.ls_mem_owner == "sd" and self.store_mem_release_cycle is not None:
             if self.clock >= self.store_mem_release_cycle:
                 if self.fs_LS.memory_occupied:
@@ -1062,18 +1065,17 @@ class Architecture:
             addr, (alias, value, done, instr_ref) = self.ROB.peek()
             print(f"[COMMIT] Checking ROB entry {addr} and clearing from ROB: alias={alias}, value={value}, done={done}")
             if done == True:
-                # Be defensive: instr_ref can be None if an entry was written without it
+                # instr_ref can be None if an entry was written without it
                 self.previous_ROB = (instr_ref.opcode if instr_ref is not None else alias)
-                #print(f"PLSWORK: {instr_ref.opcode}")
                 addr = self.ROB.find_by_alias(alias)
                 print(f"[COMMIT] Committing {value} to {alias} from {addr}")
-
                 
                 if instr_ref is not None and instr_ref.opcode == "sd":
-                    # Enforce exclusive access to the memory port shared with loads.
+                    # Enforce exclusive access to the memory port shared with loads
                     if self.fs_LS.memory_occupied and self.ls_mem_owner != "sd":
                         print("[COMMIT] Store waiting for memory port to become free.")
                         return
+                    
                     if (
                         self.ls_mem_owner == "sd"
                         and self.store_mem_release_cycle is not None
@@ -1085,6 +1087,7 @@ class Architecture:
                         self.fs_LS.use_memory()
                     self.ls_mem_owner = "sd"
                     self.store_mem_release_cycle = self.clock + self.fs_LS.cycles_per_instruction
+                    
                     # Stores do not write a value to ARF but we still
                     # want to record when their commit stage happens
                     self.had_SD = True
